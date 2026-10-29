@@ -18,6 +18,7 @@ class Enemigo:
         self.ticks_por_paso = stats['ticks_por_paso']
         self.vision = stats['vision']
         self.invisible = stats['invisible']
+        self.recompensa = stats['recompensa']
         self.espera = self.ticks_por_paso    
         self.estado = 'vivo'                  
         self.camino_asignado = []            
