@@ -54,7 +54,7 @@ def bfs(mapa_conocido, inicio, meta):
     res.frontera_max = 1
     encontrado = False
  
-while len(frontera) > 0:
+    while len(frontera) > 0:
         actual = frontera.popleft()
         res.expandidos += 1
         if actual == meta:
