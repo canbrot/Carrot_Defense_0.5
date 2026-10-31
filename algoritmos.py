@@ -4,9 +4,7 @@ from collections import deque
 from datos import CAMINO, META, DESCONOCIDO
  
 # Todos los algoritmos de ruta tienen la MISMA firma y devuelven lo mismo:
-#     algoritmo(mapa_conocido, inicio, meta, costo_celda) -> ResultadoBusqueda
-# asi comparar metricas (nodos, tiempo, frontera) es trivial.
- 
+#     algoritmo(mapa_conocido, inicio, meta, costo_celda) -> ResultadoBusqueda 
 MOVIMIENTOS = [(-1, 0), (1, 0), (0, -1), (0, 1)]   
 
  
@@ -35,8 +33,9 @@ def vecinos(mapa_conocido, fila, col):
             lista.append((f, c))
     return lista
  
- 
-def reconstruir_camino(padres, inicio, meta):
+# Una vez que la búsqueda encuentra el objetivo, reconstruye el camino 
+# yendo desde la meta hacia atrás, lo invierte y lo devuelve como 
+# la lista de pasos que el enemigo debe seguirdef reconstruir_camino(padres, inicio, meta):
     camino = []
     actual = meta
     while actual != inicio:
@@ -44,3 +43,33 @@ def reconstruir_camino(padres, inicio, meta):
         actual = padres[actual]
     camino.reverse()
     return camino
+
+def bfs(mapa_conocido, inicio, meta):
+    t0 = time.perf_counter()
+    res = ResultadoBusqueda()
+ 
+    frontera = deque([inicio])
+    padres = {inicio: None}
+    res.generados = 1
+    res.frontera_max = 1
+    encontrado = False
+ 
+    while frontera:
+        actual = frontera.popleft()
+        res.expandidos += 1
+        if actual == meta:
+            encontrado = True
+            break
+        for vecino in vecinos(mapa_conocido, actual[0], actual[1]):
+            if vecino not in padres:
+                padres[vecino] = actual
+                frontera.append(vecino)
+                res.generados += 1
+        if len(frontera) > res.frontera_max:
+            res.frontera_max = len(frontera)
+ 
+    if encontrado:
+        res.camino = reconstruir_camino(padres, inicio, meta)
+        res.costo = len(res.camino)
+    res.tiempo_ms = (time.perf_counter() - t0) * 1000
+    return res
