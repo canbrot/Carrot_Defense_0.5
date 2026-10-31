@@ -54,7 +54,7 @@ def bfs(mapa_conocido, inicio, meta):
     res.frontera_max = 1
     encontrado = False
  
-    while frontera:
+while len(frontera) > 0:
         actual = frontera.popleft()
         res.expandidos += 1
         if actual == meta:
@@ -68,7 +68,7 @@ def bfs(mapa_conocido, inicio, meta):
         if len(frontera) > res.frontera_max:
             res.frontera_max = len(frontera)
  
-    if encontrado:
+    if encontrado == True:
         res.camino = reconstruir_camino(padres, inicio, meta)
         res.costo = len(res.camino)
     res.tiempo_ms = (time.perf_counter() - t0) * 1000
