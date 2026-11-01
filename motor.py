@@ -2,7 +2,7 @@ from datos import (mapa_P, FUERA, ENTRADA, META_POS, ESTADISTICAS_ENEMIGO,
                    ESTADISTICAS_TORRE, VIDA_BASE, PRESUPUESTO_JUGADOR_INICIAL,
                    INGRESO_JUGADOR_RONDA, PRESUPUESTO_IA_INICIAL, INGRESO_IA_RONDA,
                    BONO_EXPLORACION, INTERVALO_SPAWN, LIMITE_TICKS_RONDA)
-from entidades import Enemigo, Torre
+from entidades_struct import Enemigo, Torre
 from memoria_ia import MemoriaIA
 import algoritmos
 
