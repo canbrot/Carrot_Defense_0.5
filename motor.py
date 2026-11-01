@@ -3,7 +3,7 @@ from datos import (mapa_P, FUERA, ENTRADA, META_POS, ESTADISTICAS_ENEMIGO,
                    INGRESO_JUGADOR_RONDA, PRESUPUESTO_IA_INICIAL, INGRESO_IA_RONDA,
                    BONO_EXPLORACION, INTERVALO_SPAWN, LIMITE_TICKS_RONDA)
 from entidades_struct import Enemigo, Torre
-from memoria_ia import MemoriaIA
+from memoria_C import MemoriaIA
 import algoritmos
 
 # Que algoritmo usa cada tipo de enemigo (cambiar aqui para probar otros)
