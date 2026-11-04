@@ -1,21 +1,22 @@
 import os
 import pygame
 
-from datos import (mapa_P, FUERA, CAMINO, META, DESCONOCIDO,
-                   ESTADISTICAS_TORRE, ESTADISTICAS_ENEMIGO)
+from datos import (MAX_TORRES, mapa_P, FUERA, CAMINO, META, DESCONOCIDO,
+                   ESTADISTICAS_TORRE, ESTADISTICAS_ENEMIGO, )
 from motor import Juego
 
 # ---------------------------------------------------------------
 # Configuracion visual
 # ---------------------------------------------------------------
-CELDA = 48            # tamano en pantalla de cada celda (si usan sprites de 32x32
-                      # y quieren pixel perfecto, pongan 32 o 64)
+CELDA = 40            # 32 o 64 (multiplo de 32 para que los sprites no se deformen)
 FILAS, COLS = mapa_P.shape
 ANCHO_PANEL = 260
 ANCHO = COLS * CELDA + ANCHO_PANEL
-ALTO = max(FILAS * CELDA, 560)
+ALTO = max(FILAS * CELDA, 600)
 TICK_MS = 150         # duracion de un tick de simulacion a velocidad x1
 CARPETA_ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets')
+CARPETA_IMAGES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images')
+DIRECCIONES = ['arriba', 'abajo', 'izquierda', 'derecha']
 
 COLOR_FUERA = (96, 160, 80)
 COLOR_CAMINO = (196, 164, 110)
@@ -26,7 +27,8 @@ COLOR_BOTON = (70, 70, 85)
 COLOR_BOTON_SEL = (60, 130, 200)
 COLOR_TORRE = {'basica': (240, 240, 240), 'pesada': (120, 120, 210),
                'reconocimiento': (230, 200, 60), 'rapida': (240, 150, 200)}
-COLOR_ENEMIGO = {'topo': (110, 70, 40), 'jabali': (140, 30, 30), 'mapache': (130, 130, 140)}
+COLOR_ENEMIGO = {'topo': (110, 70, 40), 'jabali': (140, 30, 30), 'mapache': (130, 130, 140),
+                 'jefe': (80, 0, 80)}
 
 
 # ---------------------------------------------------------------
@@ -35,18 +37,22 @@ COLOR_ENEMIGO = {'topo': (110, 70, 40), 'jabali': (140, 30, 30), 'mapache': (130
 # torre_<tipo>, enemigo_<tipo>   (ver assets/LEEME.txt)
 # ---------------------------------------------------------------
 def cargar_sprite(nombre):
-    ruta = os.path.join(CARPETA_ASSETS, nombre + '.png')
-    if not os.path.exists(ruta):
-        return None
-    imagen = pygame.image.load(ruta).convert_alpha()
-    return pygame.transform.scale(imagen, (CELDA, CELDA))   # sin suavizado
+    for carpeta in (CARPETA_IMAGES, CARPETA_ASSETS):
+        ruta = os.path.join(carpeta, nombre + '.png')
+        if os.path.exists(ruta):
+            imagen = pygame.image.load(ruta).convert_alpha()
+            return pygame.transform.scale(imagen, (CELDA, CELDA))   # sin suavizado
+    return None
 
 
 def cargar_sprites():
     nombres = ['terreno_fuera', 'terreno_camino', 'terreno_meta']
     nombres += ['torre_' + t for t in ESTADISTICAS_TORRE]
-    nombres += ['enemigo_' + e for e in ESTADISTICAS_ENEMIGO]
-    return {n: cargar_sprite(n) for n in nombres}
+    sprites = {n: cargar_sprite(n) for n in nombres}
+    for e in ESTADISTICAS_ENEMIGO:
+        for d in DIRECCIONES:
+            sprites[e + '_' + d] = cargar_sprite(e + '_' + d)   # ej: 'topo_arriba'
+    return sprites
 
 
 # ---------------------------------------------------------------
@@ -132,7 +138,7 @@ def dibujar_torres(pantalla, juego, sprites, fuente):
 def dibujar_enemigos(pantalla, juego, sprites):
     for e in juego.enemigos:
         r = rect_celda(e.fila, e.col)
-        sprite = sprites.get('enemigo_' + e.tipo)
+        sprite = sprites.get(e.tipo + '_' + e.direccion)
         if sprite:
             pantalla.blit(sprite, r)
         else:
@@ -171,9 +177,10 @@ def dibujar_panel(pantalla, juego, fuente, fuente_peq, seleccionada, velocidad, 
     texto(pantalla, fuente, 'Fase: ' + juego.fase, x, 36)
     texto(pantalla, fuente, 'Vida de la base: ' + str(juego.vida_base), x, 60)
     texto(pantalla, fuente, 'Dinero: ' + str(juego.presupuesto_jugador), x, 84)
+    
     if ver_ia:
         texto(pantalla, fuente, 'Dinero IA: ' + str(juego.presupuesto_ia), x, 108)
-    texto(pantalla, fuente, 'Torres:', x, 142)
+    texto(pantalla, fuente, 'Torres: ' + str(len(juego.torres)) + '/' + str(MAX_TORRES), x, 142)
 
     rects = rects_panel()
     for tipo, stats in ESTADISTICAS_TORRE.items():
@@ -183,7 +190,8 @@ def dibujar_panel(pantalla, juego, fuente, fuente_peq, seleccionada, velocidad, 
         texto(pantalla, fuente_peq, tipo + '  ($' + str(stats['costo']) + ')', r.x + 16, r.y + 9)
 
     etiquetas = {'preparacion': 'Iniciar ronda', 'ronda': 'Velocidad x' + str(velocidad),
-                 'resumen': 'Siguiente ronda', 'derrota': 'Reiniciar partida'}
+                 'resumen': 'Siguiente ronda', 'derrota': 'Reiniciar partida',
+                 'victoria': 'Reiniciar partida'}
     r = rects['accion']
     pygame.draw.rect(pantalla, (50, 150, 80), r)
     texto(pantalla, fuente, etiquetas[juego.fase], r.x + 12, r.y + 11)
@@ -191,7 +199,7 @@ def dibujar_panel(pantalla, juego, fuente, fuente_peq, seleccionada, velocidad, 
     s = ESTADISTICAS_TORRE[seleccionada]
     y = r.bottom + 14
     texto(pantalla, fuente_peq, 'Rango ' + str(s['rango']) + ' | Cooldown ' + str(s['cooldown']), x, y)
-    texto(pantalla, fuente_peq, 'Sacia ' + str(s['saciacion']) + ' | Ve topos: ' +
+    texto(pantalla, fuente_peq, 'Rellena ' + str(s['rellenado']) + ' | Ve topos: ' +
           ('si' if s['uniq'] else 'no'), x, y + 18)
 
     y += 50
@@ -200,12 +208,13 @@ def dibujar_panel(pantalla, juego, fuente, fuente_peq, seleccionada, velocidad, 
         texto(pantalla, fuente_peq, linea, x, y, (170, 170, 180))
         y += 18
 
-    if juego.fase in ('resumen', 'derrota') and juego.stats_ronda:
+    if juego.fase in ('resumen', 'derrota', 'victoria') and juego.stats_ronda:
         st = juego.stats_ronda
         y += 8
         texto(pantalla, fuente_peq, 'Llegaron: ' + str(st['llegaron']) + '  Saciados: ' +
               str(st['saciados']), x, y)
-        texto(pantalla, fuente_peq, 'Celdas nuevas (IA): ' + str(st['celdas_nuevas']), x, y + 18)
+        texto(pantalla, fuente_peq, 'Dinero ganado: ' + str(st['dinero_ganado']), x, y + 18)
+        texto(pantalla, fuente_peq, 'Celdas nuevas (IA): ' + str(st['celdas_nuevas']), x, y + 36)
 
 
 def dibujar_menu(pantalla, fuente, fuente_grande):
@@ -229,7 +238,7 @@ def accion_principal(juego, velocidad):
         velocidad = {1: 2, 2: 4, 4: 1}[velocidad]
     elif juego.fase == 'resumen':
         juego.siguiente_ronda()
-    elif juego.fase == 'derrota':
+    elif juego.fase in ('derrota', 'victoria'):
         juego = Juego()
     return juego, velocidad
 
