@@ -1,21 +1,23 @@
 import numpy as np
-from datos import DESCONOCIDO
+from datos import DESCONOCIDO, VENTANA_RONDAS, PESO_PELIGRO
 
 
 class MemoriaIA:
     """Lo que sabe la IA. Es compartida por todos los enemigos.
 
     - mapa_conocido: nunca se olvida (empieza todo en DESCONOCIDO).
-    - peligro: cuentas de muertes por (tipo, celda). Se reinicia cada ronda:
-      durante una ronda se acumula en peligro_actual y la IA se guia por
-      peligro_anterior (lo que aprendio en la ultima ronda).
+    - peligro: para cada (tipo, celda), la fraccion de panza que las torres
+      rellenaron ahi (1.0 = una panza llena = un enemigo saciado). Durante una
+      ronda se acumula en peligro_actual; la IA se guia por peligro_anterior,
+      que suma las ultimas VENTANA_RONDAS rondas.
     """
 
     def __init__(self, mapa_real):
         filas, cols = mapa_real.shape
         self.mapa_conocido = np.full((filas, cols), DESCONOCIDO)
-        self.peligro_anterior = {}
+        self.peligro_anterior = {}   # suma de las ultimas VENTANA_RONDAS rondas
         self.peligro_actual = {}
+        self.historial = []          # peligro de cada una de esas rondas
 
     def revelar(self, mapa_real, fila, col, radio):
         filas, cols = mapa_real.shape
@@ -27,14 +29,21 @@ class MemoriaIA:
     def celdas_conocidas(self):
         return int(np.count_nonzero(self.mapa_conocido != DESCONOCIDO))
 
-    def registrar_muerte(self, tipo, celda):
+    def registrar_golpe(self, tipo, celda, fraccion):
+        # fraccion = rellenado de la torre / panza maxima del enemigo
         clave = (tipo, celda)
-        self.peligro_actual[clave] = self.peligro_actual.get(clave, 0) + 1
+        self.peligro_actual[clave] = self.peligro_actual.get(clave, 0) + fraccion
 
     def costo_celda(self, tipo, celda):
-        # costo base 1 + muertes de ese tipo en esa celda en la ronda anterior
-        return 1 + self.peligro_anterior.get((tipo, celda), 0)
+        # costo base 1 + PESO_PELIGRO por cada panza completa rellenada a ese tipo
+        # en esa celda (dentro de las ultimas VENTANA_RONDAS rondas)
+        return 1 + PESO_PELIGRO * self.peligro_anterior.get((tipo, celda), 0)
 
     def terminar_ronda(self):
-        self.peligro_anterior = self.peligro_actual
+        self.historial.append(self.peligro_actual)
+        self.historial = self.historial[-VENTANA_RONDAS:]
         self.peligro_actual = {}
+        self.peligro_anterior = {}
+        for ronda in self.historial:
+            for clave, n in ronda.items():
+                self.peligro_anterior[clave] = self.peligro_anterior.get(clave, 0) + n
