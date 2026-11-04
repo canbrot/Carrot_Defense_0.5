@@ -1,13 +1,14 @@
-import random
 import time
 from collections import deque
 from datos import CAMINO, META, DESCONOCIDO
- 
-# Todos los algoritmos de ruta tienen la MISMA firma y devuelven lo mismo:
-#     algoritmo(mapa_conocido, inicio, meta, costo_celda) -> ResultadoBusqueda 
-MOVIMIENTOS = [(-1, 0), (1, 0), (0, -1), (0, 1)]   
 
- 
+# Todos los algoritmos de ruta tienen la MISMA firma y devuelven lo mismo:
+# algoritmo(mapa_conocido, inicio, meta, costo_celda) -> ResultadoBusqueda
+# asi comparar metricas (nodos, tiempo, frontera) es trivial.
+
+MOVIMIENTOS = [(-1, 0), (1, 0), (0, -1), (0, 1)]   # 4 vecinos (sin diagonales)
+
+
 class ResultadoBusqueda:
     def __init__(self):
         self.camino = []          # celdas por recorrer, SIN incluir la de inicio
@@ -16,26 +17,28 @@ class ResultadoBusqueda:
         self.expandidos = 0
         self.frontera_max = 0
         self.tiempo_ms = 0.0
- 
- 
-def es_transitable(mapa_conocido, fila, col):
-    # Suposicion OPTIMISTA
-    return mapa_conocido[fila][col] in (CAMINO, META, DESCONOCIDO)
- 
- 
-def vecinos(mapa_conocido, fila, col):
+        self.explorando = False   # True = el camino lleva a una frontera, no a la meta
+
+
+def es_transitable(mapa_conocido, fila, col, optimista=True):
+    # optimista=True: lo desconocido se considera transitable (lo usa A*).
+    # optimista=False: solo se camina por lo que ya se conoce (lo usa la exploracion).
+    if optimista:
+        return mapa_conocido[fila][col] in (CAMINO, META, DESCONOCIDO)
+    return mapa_conocido[fila][col] in (CAMINO, META)
+
+
+def vecinos(mapa_conocido, fila, col, optimista=True):
     filas, cols = mapa_conocido.shape
     lista = []
     for df, dc in MOVIMIENTOS:
-        f = fila + df
-        c =  col + dc
-        if 0 <= f < filas and 0 <= c < cols and es_transitable(mapa_conocido, f, c):
+        f, c = fila + df, col + dc
+        if 0 <= f < filas and 0 <= c < cols and es_transitable(mapa_conocido, f, c, optimista):
             lista.append((f, c))
     return lista
- 
-# Una vez que la búsqueda encuentra el objetivo, reconstruye el camino 
-# yendo desde la meta hacia atrás, lo invierte y lo devuelve como 
-# la lista de pasos que el enemigo debe seguirdef reconstruir_camino(padres, inicio, meta):
+
+
+def reconstruir_camino(padres, inicio, meta):
     camino = []
     actual = meta
     while actual != inicio:
@@ -44,17 +47,22 @@ def vecinos(mapa_conocido, fila, col):
     camino.reverse()
     return camino
 
-def bfs(mapa_conocido, inicio, meta):
+
+# ---------------------------------------------------------------
+# BFS (ya implementado: sirve de plantilla para los demas)
+# ---------------------------------------------------------------
+def bfs(mapa_conocido, inicio, meta, costo_celda=None):
+    # costo_celda se ignora: BFS no usa costos (solo cuenta pasos)
     t0 = time.perf_counter()
     res = ResultadoBusqueda()
- 
+
     frontera = deque([inicio])
     padres = {inicio: None}
     res.generados = 1
     res.frontera_max = 1
     encontrado = False
- 
-    while len(frontera) > 0:
+
+    while frontera:
         actual = frontera.popleft()
         res.expandidos += 1
         if actual == meta:
@@ -67,27 +75,87 @@ def bfs(mapa_conocido, inicio, meta):
                 res.generados += 1
         if len(frontera) > res.frontera_max:
             res.frontera_max = len(frontera)
- 
-    if encontrado == True:
+
+    if encontrado:
         res.camino = reconstruir_camino(padres, inicio, meta)
         res.costo = len(res.camino)
     res.tiempo_ms = (time.perf_counter() - t0) * 1000
     return res
 
 
-# Heuristicas 
+# ---------------------------------------------------------------
+# BFS de EXPLORACION: no sabe cual es el camino mas corto. Solo camina por
+# lo conocido y va a la frontera mas cercana (celda conocida con una vecina
+# desconocida) hasta que la meta aparece en su mapa; entonces va a la meta.
+# ---------------------------------------------------------------
+def es_frontera(mapa_conocido, fila, col):
+    filas, cols = mapa_conocido.shape
+    for df, dc in MOVIMIENTOS:
+        f, c = fila + df, col + dc
+        if 0 <= f < filas and 0 <= c < cols and mapa_conocido[f][c] == DESCONOCIDO:
+            return True
+    return False
+
+
+def bfs_exploracion(mapa_conocido, inicio, meta, costo_celda=None):
+    t0 = time.perf_counter()
+    res = ResultadoBusqueda()
+
+    frontera = deque([inicio])
+    padres = {inicio: None}
+    res.generados = 1
+    res.frontera_max = 1
+    destino = None
+    primera_frontera = None      # la frontera mas cercana (la primera que sale de la cola)
+
+    while frontera:
+        actual = frontera.popleft()
+        res.expandidos += 1
+        if actual == meta:
+            destino = actual
+            break
+        if primera_frontera is None and actual != inicio and es_frontera(mapa_conocido, actual[0], actual[1]):
+            primera_frontera = actual
+        for vecino in vecinos(mapa_conocido, actual[0], actual[1], optimista=False):
+            if vecino not in padres:
+                padres[vecino] = actual
+                frontera.append(vecino)
+                res.generados += 1
+        if len(frontera) > res.frontera_max:
+            res.frontera_max = len(frontera)
+
+    if destino is None and primera_frontera is not None:
+        destino = primera_frontera
+        res.explorando = True
+
+    if destino is not None:
+        res.camino = reconstruir_camino(padres, inicio, destino)
+        res.costo = len(res.camino)
+    res.tiempo_ms = (time.perf_counter() - t0) * 1000
+    return res
+
+
+# ---------------------------------------------------------------
+# Heuristicas (para A*)
+# ---------------------------------------------------------------
 def manhattan(a, b):
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
- 
- 
+
+
 def euclidiana(a, b):
     return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
- 
- 
 
-def a_estrella(mapa_conocido, inicio, meta, costo_celda=None, heuristica=manhattan
+
+# ---------------------------------------------------------------
+# A*  -> POR IMPLEMENTAR
+# ---------------------------------------------------------------
+import heapq
+import time
+
+def a_estrella(mapa_conocido, inicio, meta, costo_celda=None, heuristica=manhattan):
+    # Si no se pasa una función de costo por celda, por defecto cada paso cuesta 1
     if costo_celda is None:
-       costo_celda = lambda celda: 1
+        costo_celda = lambda celda: 1
 
     t0 = time.perf_counter()
     res = ResultadoBusqueda()
@@ -138,9 +206,11 @@ def a_estrella(mapa_conocido, inicio, meta, costo_celda=None, heuristica=manhatt
 
     res.tiempo_ms = (time.perf_counter() - t0) * 1000
     return res
-    raise NotImplementedError('A* por implementar')
- 
 
+# ---------------------------------------------------------------
+# Q-learning / SARSA  -> POR IMPLEMENTAR
+# ---------------------------------------------------------------
+import random
 
 RECOMPENSA_META = 100
 RECOMPENSA_MUERTE = -20
@@ -176,7 +246,7 @@ class AgenteQLearning:
         max_valor = max(valores_acciones)
         
         # Si hubiera empates, seleccionamos al azar entre los mejores
-mejores_acciones = [i for i, val in enumerate(valores_acciones) if val == max_valor]
+        mejores_acciones = [i for i, val in enumerate(valores_acciones) if val == max_valor]
         return random.choice(mejores_acciones)
 
     def actualizar(self, estado, accion, recompensa, estado_nuevo):
@@ -193,8 +263,9 @@ mejores_acciones = [i for i, val in enumerate(valores_acciones) if val == max_va
             recompensa + (self.gamma * mejor_futuro) - valor_actual
         )
 
+# Diccionario para escoger el algoritmo por nombre
 ALGORITMOS = {
     'bfs': bfs,
+    'bfs_exploracion': bfs_exploracion,
     'a_estrella': a_estrella,
 }
-
