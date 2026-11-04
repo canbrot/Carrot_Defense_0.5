@@ -18,10 +18,11 @@ class Enemigo:
         self.ticks_por_paso = stats['ticks_por_paso']
         self.vision = stats['vision']
         self.invisible = stats['invisible']
-        self.recompensa = stats['recompensa']
-        self.espera = self.ticks_por_paso    
-        self.estado = 'vivo'                  
-        self.camino_asignado = []            
+        self.espera = self.ticks_por_paso     # cuenta regresiva para el siguiente paso
+        self.estado = 'vivo'                  # 'vivo', 'saciado' o 'llego'
+        self.camino_asignado = []             # celdas que le faltan por recorrer
+        self.explorando = False               # True = su camino lleva a una frontera, hay que replanificar
+        self.direccion = 'abajo'              # hacia donde mira (para el sprite)
 
 
 class Torre:
@@ -31,11 +32,11 @@ class Torre:
         self.fila = fila
         self.col = col
         self.rango = stats['rango']
-        self.cooldown = stats['cooldown']     
-        self.Dmg = stats['rellenado']          
+        self.cooldown = stats['cooldown']      # antes vel_atk
+        self.Dmg = stats['rellenado']          # cuanta panza llena cada disparo
         self.costo = stats['costo']
-        self.uniq = stats['uniq']             
-        self.espera = 0
+        self.uniq = stats['uniq']              # 1 = puede ver a los topos
+        self.espera = 0                        # cuenta regresiva para disparar
 
     def en_rango(self, fila, col):
         return (self.fila - fila) ** 2 + (self.col - col) ** 2 <= self.rango ** 2
