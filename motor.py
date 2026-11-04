@@ -1,16 +1,19 @@
-from datos import (mapa_P, FUERA, ENTRADA, META_POS, ESTADISTICAS_ENEMIGO,
+from datos import (RONDA_FINAL, mapa_P, FUERA, ENTRADA, META_POS, ESTADISTICAS_ENEMIGO,
                    ESTADISTICAS_TORRE, VIDA_BASE, PRESUPUESTO_JUGADOR_INICIAL,
-                   INGRESO_JUGADOR_RONDA, PRESUPUESTO_IA_INICIAL, INGRESO_IA_RONDA,
-                   BONO_EXPLORACION, INTERVALO_SPAWN, LIMITE_TICKS_RONDA)
+                   PRESUPUESTO_IA_INICIAL, RECOMPENSA_IA_LLEGADA, PRESUPUESTO_IA_MINIMO,
+                   INGRESO_BASE_IA, CRECIMIENTO_IA_POR_RONDA,
+                   BONO_EXPLORACION, INTERVALO_SPAWN, LIMITE_TICKS_RONDA, FRACCION_GASTO_IA, 
+                   TOPE_BONO_EXPLORACION, INTERVALO_SPAWN_MIN, RONDAS_POR_REDUCCION_SPAWN, MAX_TORRES )
 from entidades_struc import Enemigo, Torre
 from memoria_C import MemoriaIA
 import algoritmos
 
 # Que algoritmo usa cada tipo de enemigo (cambiar aqui para probar otros)
 ALGORITMO_POR_TIPO = {
-    'topo': 'bfs',
-    'mapache': 'bfs',
-    'jabali': 'bfs',
+    'topo': 'bfs_exploracion',
+    'mapache': 'a_estrella',
+    'jabali': 'a_estrella',
+    'jefe': 'a_estrella',
 }
 
 
@@ -53,7 +56,7 @@ class Juego:
         return self.mapa_real[fila][col] == FUERA and self.torre_en(fila, col) is None
 
     def colocar_torre(self, tipo, fila, col):
-        if self.fase != 'preparacion' or not self.es_construible(fila, col):
+        if self.fase != 'preparacion' or not self.es_construible(fila, col) or len(self.torres) >= MAX_TORRES:
             return False
         costo = ESTADISTICAS_TORRE[tipo]['costo']
         if costo > self.presupuesto_jugador:
@@ -76,23 +79,37 @@ class Juego:
     # Rondas
     # ----------------------------------------------------------
     def generar_oleada(self):
-        """Regla simple: la IA gasta todo su presupuesto ciclando tipos.
-        (Aqui se puede mejorar luego con una estrategia mas inteligente.)"""
+        self.presupuesto_ia = max(self.presupuesto_ia, PRESUPUESTO_IA_MINIMO)
+        final = (self.ronda == RONDA_FINAL)
+        if final:
+            gasto = self.presupuesto_ia                     # gasta todo
+        else:
+            gasto = max(int(self.presupuesto_ia * FRACCION_GASTO_IA), PRESUPUESTO_IA_MINIMO)
+            gasto = min(gasto, self.presupuesto_ia)
+        self.presupuesto_ia -= gasto
+        disponible = gasto                                                               # NUEVO
+        intervalo = max(INTERVALO_SPAWN_MIN,
+                    INTERVALO_SPAWN - (self.ronda - 1) // RONDAS_POR_REDUCCION_SPAWN) # NUEVO
         ciclo = ['topo', 'mapache', 'jabali']
         i = 0
         tiempo = 1
         while True:
             tipo = ciclo[i % 3]
             costo = ESTADISTICAS_ENEMIGO[tipo]['costo']
-            if costo > self.presupuesto_ia:
+            if costo > disponible:                       # antes: self.presupuesto_ia
                 tipo = 'topo'
                 costo = ESTADISTICAS_ENEMIGO['topo']['costo']
-                if costo > self.presupuesto_ia:
+                if costo > disponible:                   # antes: self.presupuesto_ia
                     break
-            self.presupuesto_ia -= costo
+            disponible -= costo                          # antes: self.presupuesto_ia
             self.cola_spawn.append([tiempo, tipo])
-            tiempo += INTERVALO_SPAWN
+            tiempo += intervalo                          # antes: INTERVALO_SPAWN
             i += 1
+        if final:
+            self.cola_spawn.append([tiempo + INTERVALO_SPAWN, 'jefe'])   # el jefe sale al final
+            disponible = 0
+        
+        self.presupuesto_ia += disponible                # NUEVO: lo no gastado se guarda
 
     def iniciar_ronda(self):
         if self.fase != 'preparacion':
@@ -102,7 +119,7 @@ class Juego:
         self.cola_spawn = []
         self.efectos = []
         self.stats_ronda = {'enviados': 0, 'llegaron': 0, 'saciados': 0,
-                            'atascados': 0, 'celdas_nuevas': 0}
+                            'atascados': 0, 'celdas_nuevas': 0, 'dinero_ganado': 0}
         self.celdas_al_inicio = self.memoria.celdas_conocidas()
         self.generar_oleada()
         self.stats_ronda['enviados'] = len(self.cola_spawn)
@@ -113,7 +130,8 @@ class Juego:
         if self.fase != 'resumen':
             return False
         self.ronda += 1
-        self.presupuesto_jugador += INGRESO_JUGADOR_RONDA
+        # presupuesto base de la IA: crece con las rondas (ademas de recompensas y bono)
+        self.presupuesto_ia += INGRESO_BASE_IA + CRECIMIENTO_IA_POR_RONDA * (self.ronda - 1)
         self.enemigos = []
         self.efectos = []
         self.fase = 'preparacion'
@@ -160,6 +178,7 @@ class Juego:
         costo = lambda celda: self.memoria.costo_celda(e.tipo, celda)
         res = funcion(self.memoria.mapa_conocido, (e.fila, e.col), META_POS, costo)
         e.camino_asignado = res.camino
+        e.explorando = res.explorando
 
         m = self.metricas.setdefault(nombre, {'llamadas': 0, 'generados': 0, 'expandidos': 0,
                                               'frontera_max': 0, 'tiempo_ms': 0.0})
@@ -177,12 +196,22 @@ class Juego:
 
         # replanificar si no hay ruta o si alguna celda de la ruta ya se supo que es pared
         conocido = self.memoria.mapa_conocido
-        if not e.camino_asignado or any(conocido[c] == FUERA for c in e.camino_asignado):
+        # mientras explora, replanifica en cada paso porque cada paso revela celdas nuevas
+        if e.explorando or not e.camino_asignado or any(conocido[c] == FUERA for c in e.camino_asignado):
             self._planificar(e)
             if not e.camino_asignado:
                 return
 
-        e.fila, e.col = e.camino_asignado.pop(0)
+        nueva_f, nueva_c = e.camino_asignado.pop(0)
+        if nueva_f < e.fila:
+            e.direccion = 'arriba'
+        elif nueva_f > e.fila:
+            e.direccion = 'abajo'
+        elif nueva_c < e.col:
+            e.direccion = 'izquierda'
+        elif nueva_c > e.col:
+            e.direccion = 'derecha'
+        e.fila, e.col = nueva_f, nueva_c
         self.memoria.revelar(self.mapa_real, e.fila, e.col, e.vision)
         if (e.fila, e.col) == META_POS:
             e.estado = 'llego'
@@ -204,16 +233,21 @@ class Juego:
             if objetivo is None:
                 continue
             objetivo.panza_actual += t.Dmg
+            self.memoria.registrar_golpe(objetivo.tipo, (objetivo.fila, objetivo.col),
+                                         t.Dmg / objetivo.panza_maxima)
             t.espera = t.cooldown - 1
             self.efectos.append([t.fila, t.col, objetivo.fila, objetivo.col, 3])
             if objetivo.panza_actual >= objetivo.panza_maxima:
                 objetivo.estado = 'saciado'
-                self.memoria.registrar_muerte(objetivo.tipo, (objetivo.fila, objetivo.col))
+                recompensa = ESTADISTICAS_ENEMIGO[objetivo.tipo]['recompensa']
+                self.presupuesto_jugador += recompensa
+                self.stats_ronda['dinero_ganado'] += recompensa
 
     def _limpiar(self):
         for e in self.enemigos:
             if e.estado == 'llego':
                 self.vida_base -= 1
+                self.presupuesto_ia += RECOMPENSA_IA_LLEGADA
                 self.stats_ronda['llegaron'] += 1
             elif e.estado == 'saciado':
                 self.stats_ronda['saciados'] += 1
@@ -226,5 +260,7 @@ class Juego:
         self.memoria.terminar_ronda()
         nuevas = self.memoria.celdas_conocidas() - self.celdas_al_inicio
         self.stats_ronda['celdas_nuevas'] = nuevas
-        self.presupuesto_ia += INGRESO_IA_RONDA + nuevas * BONO_EXPLORACION
+        self.presupuesto_ia += min(nuevas * BONO_EXPLORACION, TOPE_BONO_EXPLORACION)
         self.fase = 'resumen'
+        if self.ronda == RONDA_FINAL:
+            self.fase = 'victoria'
