@@ -8,12 +8,12 @@ from entidades_struc import Enemigo, Torre
 from memoria_C import MemoriaIA
 import algoritmos
 
-# Que algoritmo usa cada tipo de enemigo (cambiar aqui para probar otros)
+# Que algoritmo usa cada tipo de enemigo
 ALGORITMO_POR_TIPO = {
     'topo': 'bfs_exploracion',
     'mapache': 'a_estrella',
     'jabali': 'a_estrella',
-    'jefe': 'a_estrella',
+    'jefe': 'q_learning'
 }
 
 
@@ -40,9 +40,7 @@ class Juego:
         self.algoritmo_por_tipo = dict(ALGORITMO_POR_TIPO)
         self.metricas = {}          # metricas acumuladas por algoritmo
 
-    # ----------------------------------------------------------
     # Fase de preparacion (el jugador edita torres SOLO aqui)
-    # ----------------------------------------------------------
     def torre_en(self, fila, col):
         for t in self.torres:
             if t.fila == fila and t.col == col:
@@ -75,9 +73,9 @@ class Juego:
         self.presupuesto_jugador += torre.costo   # reembolso completo
         return True
 
-    # ----------------------------------------------------------
+
     # Rondas
-    # ----------------------------------------------------------
+
     def generar_oleada(self):
         self.presupuesto_ia = max(self.presupuesto_ia, PRESUPUESTO_IA_MINIMO)
         final = (self.ronda == RONDA_FINAL)
@@ -87,29 +85,29 @@ class Juego:
             gasto = max(int(self.presupuesto_ia * FRACCION_GASTO_IA), PRESUPUESTO_IA_MINIMO)
             gasto = min(gasto, self.presupuesto_ia)
         self.presupuesto_ia -= gasto
-        disponible = gasto                                                               # NUEVO
+        disponible = gasto                                                               
         intervalo = max(INTERVALO_SPAWN_MIN,
-                    INTERVALO_SPAWN - (self.ronda - 1) // RONDAS_POR_REDUCCION_SPAWN) # NUEVO
+                    INTERVALO_SPAWN - (self.ronda - 1) // RONDAS_POR_REDUCCION_SPAWN)
         ciclo = ['topo', 'mapache', 'jabali']
         i = 0
         tiempo = 1
         while True:
             tipo = ciclo[i % 3]
             costo = ESTADISTICAS_ENEMIGO[tipo]['costo']
-            if costo > disponible:                       # antes: self.presupuesto_ia
+            if costo > disponible:                      
                 tipo = 'topo'
                 costo = ESTADISTICAS_ENEMIGO['topo']['costo']
-                if costo > disponible:                   # antes: self.presupuesto_ia
+                if costo > disponible:                   
                     break
-            disponible -= costo                          # antes: self.presupuesto_ia
+            disponible -= costo                         
             self.cola_spawn.append([tiempo, tipo])
-            tiempo += intervalo                          # antes: INTERVALO_SPAWN
+            tiempo += intervalo                          
             i += 1
         if final:
-            self.cola_spawn.append([tiempo + INTERVALO_SPAWN, 'jefe'])   # el jefe sale al final
+            self.cola_spawn.append([tiempo + INTERVALO_SPAWN, 'jefe'])   
             disponible = 0
         
-        self.presupuesto_ia += disponible                # NUEVO: lo no gastado se guarda
+        self.presupuesto_ia += disponible               
 
     def iniciar_ronda(self):
         if self.fase != 'preparacion':
