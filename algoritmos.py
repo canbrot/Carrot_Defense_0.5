@@ -1,5 +1,7 @@
 import time
 from collections import deque
+import random
+import heapq
 from datos import CAMINO, META, DESCONOCIDO
 
 # Todos los algoritmos de ruta tienen la MISMA firma y devuelven lo mismo:
@@ -21,7 +23,7 @@ class ResultadoBusqueda:
 
 
 def es_transitable(mapa_conocido, fila, col, optimista=True):
-    # optimista=True: lo desconocido se considera transitable (lo usa A*).
+    # optimista=True: lo desconocido se considera transitable.
     # optimista=False: solo se camina por lo que ya se conoce (lo usa la exploracion).
     if optimista:
         return mapa_conocido[fila][col] in (CAMINO, META, DESCONOCIDO)
@@ -48,11 +50,9 @@ def reconstruir_camino(padres, inicio, meta):
     return camino
 
 
-# ---------------------------------------------------------------
-# BFS (ya implementado: sirve de plantilla para los demas)
-# ---------------------------------------------------------------
+# BFS 
 def bfs(mapa_conocido, inicio, meta, costo_celda=None):
-    # costo_celda se ignora: BFS no usa costos (solo cuenta pasos)
+    # costo_celda se ignora: BFS no usa costos solo cuenta pasos
     t0 = time.perf_counter()
     res = ResultadoBusqueda()
 
@@ -83,11 +83,9 @@ def bfs(mapa_conocido, inicio, meta, costo_celda=None):
     return res
 
 
-# ---------------------------------------------------------------
 # BFS de EXPLORACION: no sabe cual es el camino mas corto. Solo camina por
-# lo conocido y va a la frontera mas cercana (celda conocida con una vecina
-# desconocida) hasta que la meta aparece en su mapa; entonces va a la meta.
-# ---------------------------------------------------------------
+# lo conocido y va a la frontera mas cercana la cual es la celda conocida con una vecina
+# desconocida hasta que la meta aparece en su mapa; entonces va a la meta.
 def es_frontera(mapa_conocido, fila, col):
     filas, cols = mapa_conocido.shape
     for df, dc in MOVIMIENTOS:
@@ -106,7 +104,7 @@ def bfs_exploracion(mapa_conocido, inicio, meta, costo_celda=None):
     res.generados = 1
     res.frontera_max = 1
     destino = None
-    primera_frontera = None      # la frontera mas cercana (la primera que sale de la cola)
+    primera_frontera = None      # la frontera mas cercana, basicamente la primera que sale de la cola
 
     while frontera:
         actual = frontera.popleft()
@@ -135,9 +133,8 @@ def bfs_exploracion(mapa_conocido, inicio, meta, costo_celda=None):
     return res
 
 
-# ---------------------------------------------------------------
+
 # Heuristicas (para A*)
-# ---------------------------------------------------------------
 def manhattan(a, b):
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
@@ -146,11 +143,7 @@ def euclidiana(a, b):
     return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
 
 
-# ---------------------------------------------------------------
-# A*  -> POR IMPLEMENTAR
-# ---------------------------------------------------------------
-import heapq
-import time
+# A*  
 
 def a_estrella(mapa_conocido, inicio, meta, costo_celda=None, heuristica=manhattan):
     # Si no se pasa una función de costo por celda, por defecto cada paso cuesta 1
@@ -177,7 +170,7 @@ def a_estrella(mapa_conocido, inicio, meta, costo_celda=None, heuristica=manhatt
 
     while frontera:
         # Sacamos el nodo con el menor valor de f
-        f_actual, actual = heapq.heappop(frontera)
+        _, actual = heapq.heappop(frontera)
         res.expandidos += 1
 
         if actual == meta:
@@ -207,15 +200,15 @@ def a_estrella(mapa_conocido, inicio, meta, costo_celda=None, heuristica=manhatt
     res.tiempo_ms = (time.perf_counter() - t0) * 1000
     return res
 
-# ---------------------------------------------------------------
+ 
 # Q-learning / SARSA  -> POR IMPLEMENTAR
-# ---------------------------------------------------------------
-import random
+
 
 RECOMPENSA_META = 100
 RECOMPENSA_MUERTE = -20
 RECOMPENSA_PASO = -1
 RECOMPENSA_CELDA_NUEVA = 2
+
 
 class AgenteQLearning:
     """
@@ -263,9 +256,71 @@ class AgenteQLearning:
             recompensa + (self.gamma * mejor_futuro) - valor_actual
         )
 
+agente = AgenteQLearning(alpha=0.3, gamma=0.99, epsilon=0.2)
+
+agente = AgenteQLearning(alpha=0.3, gamma=0.99, epsilon=0.2)
+
+
+def q_learning(mapa_conocido, inicio, meta, costo_celda=None, episodios=200, max_pasos=500):
+    if costo_celda is None:
+        costo_celda = lambda celda: 1
+
+    t0 = time.perf_counter()
+    res = ResultadoBusqueda()
+    filas, cols = mapa_conocido.shape
+
+    for episodio in range(episodios):
+        estado = inicio
+        for paso in range(max_pasos):
+            accion = agente.elegir_accion(estado)
+            df, dc = MOVIMIENTOS[accion]
+            nuevo = (estado[0] + df, estado[1] + dc)
+            res.generados += 1
+
+            # pared o fuera del mapa
+            if not (0 <= nuevo[0] < filas and 0 <= nuevo[1] < cols) \
+                    or not es_transitable(mapa_conocido, nuevo[0], nuevo[1]):
+                agente.actualizar(estado, accion, RECOMPENSA_MUERTE, estado)
+                break
+
+            # meta
+            if nuevo == meta:
+                agente.actualizar(estado, accion, RECOMPENSA_META, nuevo)
+                break
+
+            # paso normal: el costo de la celda (peligro) lo penaliza
+            agente.actualizar(estado, accion, -costo_celda(nuevo), nuevo)
+            estado = nuevo
+
+    camino = []
+    estado = inicio
+    visitados = {inicio}
+    for paso in range(max_pasos):
+        if estado == meta:
+            break
+        agente._asegurar_estado(estado)
+        valores = agente.q[estado]
+        accion = valores.index(max(valores))
+        df, dc = MOVIMIENTOS[accion]
+        estado = (estado[0] + df, estado[1] + dc)
+        if not (0 <= estado[0] < filas and 0 <= estado[1] < cols) or estado in visitados:
+            break
+        camino.append(estado)
+        visitados.add(estado)
+
+    if estado == meta:
+        res.camino = camino
+        res.costo = len(camino)
+        res.tiempo_ms = (time.perf_counter() - t0) * 1000
+        return res
+
+    # si no aprendio a llegar, que el jefe no se quede quieto
+    return a_estrella(mapa_conocido, inicio, meta, costo_celda)   
+
 # Diccionario para escoger el algoritmo por nombre
 ALGORITMOS = {
     'bfs': bfs,
     'bfs_exploracion': bfs_exploracion,
     'a_estrella': a_estrella,
+    'q_learning': q_learning,
 }
