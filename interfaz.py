@@ -5,15 +5,14 @@ from datos import (MAX_TORRES, mapa_P, FUERA, CAMINO, META, DESCONOCIDO,
                    ESTADISTICAS_TORRE, ESTADISTICAS_ENEMIGO, )
 from motor import Juego
 
-# ---------------------------------------------------------------
 # Configuracion visual
-# ---------------------------------------------------------------
-CELDA = 40            # 32 o 64 (multiplo de 32 para que los sprites no se deformen)
+
+CELDA = 40            
 FILAS, COLS = mapa_P.shape
 ANCHO_PANEL = 260
 ANCHO = COLS * CELDA + ANCHO_PANEL
 ALTO = max(FILAS * CELDA, 600)
-TICK_MS = 150         # duracion de un tick de simulacion a velocidad x1
+TICK_MS = 150         
 CARPETA_ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets')
 CARPETA_IMAGES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images')
 DIRECCIONES = ['arriba', 'abajo', 'izquierda', 'derecha']
@@ -31,11 +30,11 @@ COLOR_ENEMIGO = {'topo': (110, 70, 40), 'jabali': (140, 30, 30), 'mapache': (130
                  'jefe': (80, 0, 80)}
 
 
-# ---------------------------------------------------------------
+
 # Sprites (si existe el PNG en assets/ se usa; si no, se dibuja una figura simple)
 # Nombres esperados: terreno_fuera, terreno_camino, terreno_meta,
 # torre_<tipo>, enemigo_<tipo>   (ver assets/LEEME.txt)
-# ---------------------------------------------------------------
+
 def cargar_sprite(nombre):
     for carpeta in (CARPETA_IMAGES, CARPETA_ASSETS):
         ruta = os.path.join(carpeta, nombre + '.png')
@@ -55,9 +54,9 @@ def cargar_sprites():
     return sprites
 
 
-# ---------------------------------------------------------------
+
 # Utilidades
-# ---------------------------------------------------------------
+
 def rect_celda(fila, col):
     # OJO: la matriz es (fila, col) y pygame es (x, y): x = col, y = fila
     return pygame.Rect(col * CELDA, fila * CELDA, CELDA, CELDA)
@@ -228,9 +227,7 @@ def dibujar_menu(pantalla, fuente, fuente_grande):
         pantalla.blit(t, (rects[clave].centerx - t.get_width() // 2, rects[clave].y + 14))
 
 
-# ---------------------------------------------------------------
 # Bucle principal
-# ---------------------------------------------------------------
 def accion_principal(juego, velocidad):
     if juego.fase == 'preparacion':
         juego.iniciar_ronda()
@@ -254,7 +251,7 @@ def ejecutar():
     sprites = cargar_sprites()
 
     juego = Juego()
-    estado = 'menu'            # 'menu' o 'juego'
+    estado = 'menu'           
     seleccionada = 'basica'
     ver_ia = False
     velocidad = 1
