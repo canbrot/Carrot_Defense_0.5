@@ -42,4 +42,8 @@ class Torre:
         return (self.fila - fila) ** 2 + (self.col - col) ** 2 <= self.rango ** 2
 
     def puede_ver(self, enemigo):
+<<<<<<< HEAD
         return (not enemigo.invisible) or self.uniq == 1
+=======
+        return (not enemigo.invisible) or self.uniq == 1
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f

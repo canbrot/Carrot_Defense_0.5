@@ -4,7 +4,10 @@ import pygame
 from datos import (MAX_TORRES, mapa_P, FUERA, CAMINO, META, DESCONOCIDO,
                    ESTADISTICAS_TORRE, ESTADISTICAS_ENEMIGO, )
 from motor import Juego
+<<<<<<< HEAD
 import panel_ia
+=======
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
 
 # Configuracion visual
 
@@ -204,7 +207,11 @@ def dibujar_panel(pantalla, juego, fuente, fuente_peq, seleccionada, velocidad, 
 
     y += 50
     for linea in ['Clic izq: colocar torre', 'Clic der: quitar torre',
+<<<<<<< HEAD
                   'F: niebla | TAB: panel IA', 'ESPACIO: boton principal', 'ESC: menu']:
+=======
+                  'F: ver lo que sabe la IA', 'ESPACIO: boton principal', 'ESC: menu']:
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
         texto(pantalla, fuente_peq, linea, x, y, (170, 170, 180))
         y += 18
 
@@ -250,9 +257,12 @@ def ejecutar():
     fuente_peq = pygame.font.SysFont(None, 21)
     fuente_grande = pygame.font.SysFont(None, 64)
     sprites = cargar_sprites()
+<<<<<<< HEAD
     fuentes_ia = panel_ia.crear_fuentes()
     estado_ia = panel_ia.estado_inicial()
     ver_panel = False
+=======
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
 
     juego = Juego()
     estado = 'menu'           
@@ -279,6 +289,7 @@ def ejecutar():
 
             elif estado == 'juego':
                 if ev.type == pygame.KEYDOWN:
+<<<<<<< HEAD
                     if ev.key == pygame.K_TAB:
                         ver_panel = not ver_panel
                     elif ev.key == pygame.K_ESCAPE:
@@ -298,6 +309,14 @@ def ejecutar():
                         i = panel_ia.pestana_en(ev.pos)
                         if i is not None:
                             estado_ia['pestana'] = i
+=======
+                    if ev.key == pygame.K_ESCAPE:
+                        estado = 'menu'
+                    elif ev.key == pygame.K_f:
+                        ver_ia = not ver_ia
+                    elif ev.key == pygame.K_SPACE:
+                        juego, velocidad = accion_principal(juego, velocidad)
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
 
                 elif ev.type == pygame.MOUSEBUTTONDOWN:
                     x, y = ev.pos
@@ -325,8 +344,11 @@ def ejecutar():
         # dibujo
         if estado == 'menu':
             dibujar_menu(pantalla, fuente, fuente_grande)
+<<<<<<< HEAD
         elif ver_panel:
             panel_ia.dibujar_panel_ia(pantalla, juego, estado_ia, fuentes_ia)
+=======
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
         else:
             pantalla.fill(COLOR_PANEL)
             dibujar_mapa(pantalla, juego, sprites)
@@ -340,4 +362,8 @@ def ejecutar():
 
         pygame.display.flip()
 
+<<<<<<< HEAD
     pygame.quit()
+=======
+    pygame.quit()
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f

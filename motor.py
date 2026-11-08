@@ -39,12 +39,15 @@ class Juego:
         self.celdas_al_inicio = 0
         self.algoritmo_por_tipo = dict(ALGORITMO_POR_TIPO)
         self.metricas = {}          # metricas acumuladas por algoritmo
+<<<<<<< HEAD
         # --- datos para la interfaz de la IA ---
         self.rastros = {}           # rastros[algoritmo][celda] = veces que un enemigo piso la celda (acumulado)
         self.rastros_ronda = {}     # lo mismo pero solo de la ronda actual
         self.ultima_busqueda = {}   # ultima busqueda de cada algoritmo (visitados y camino)
         self.resultado_por_algoritmo = {}   # cuantos enemigos de cada algoritmo llegaron o fueron saciados
         self.historial_rondas = []  # un dict por ronda terminada
+=======
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
 
     # Fase de preparacion (el jugador edita torres SOLO aqui)
     def torre_en(self, fila, col):
@@ -122,16 +125,22 @@ class Juego:
         self.enemigos = []
         self.cola_spawn = []
         self.efectos = []
+<<<<<<< HEAD
         self.rastros_ronda = {}
+=======
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
         self.stats_ronda = {'enviados': 0, 'llegaron': 0, 'saciados': 0,
                             'atascados': 0, 'celdas_nuevas': 0, 'dinero_ganado': 0}
         self.celdas_al_inicio = self.memoria.celdas_conocidas()
         self.generar_oleada()
         self.stats_ronda['enviados'] = len(self.cola_spawn)
+<<<<<<< HEAD
         composicion = {}
         for item in self.cola_spawn:
             composicion[item[1]] = composicion.get(item[1], 0) + 1
         self.stats_ronda['composicion'] = composicion
+=======
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
         self.fase = 'ronda'
         return True
 
@@ -197,10 +206,13 @@ class Juego:
         m['frontera_max'] = max(m['frontera_max'], res.frontera_max)
         m['tiempo_ms'] += res.tiempo_ms
 
+<<<<<<< HEAD
         self.ultima_busqueda[nombre] = {'visitados': res.visitados, 'camino': list(res.camino),
                                         'inicio': (e.fila, e.col), 'tipo': e.tipo,
                                         'ronda': self.ronda, 'explorando': res.explorando}
 
+=======
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
     def _mover(self, e):
         e.espera -= 1
         if e.espera > 0:
@@ -225,10 +237,13 @@ class Juego:
         elif nueva_c > e.col:
             e.direccion = 'derecha'
         e.fila, e.col = nueva_f, nueva_c
+<<<<<<< HEAD
         nombre = self.algoritmo_por_tipo[e.tipo]
         for rastro in (self.rastros, self.rastros_ronda):
             celdas = rastro.setdefault(nombre, {})
             celdas[(e.fila, e.col)] = celdas.get((e.fila, e.col), 0) + 1
+=======
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
         self.memoria.revelar(self.mapa_real, e.fila, e.col, e.vision)
         if (e.fila, e.col) == META_POS:
             e.estado = 'llego'
@@ -262,6 +277,7 @@ class Juego:
 
     def _limpiar(self):
         for e in self.enemigos:
+<<<<<<< HEAD
             if e.estado in ('llego', 'saciado'):
                 r = self.resultado_por_algoritmo.setdefault(self.algoritmo_por_tipo[e.tipo],
                                                             {'llegaron': 0, 'saciados': 0})
@@ -269,6 +285,8 @@ class Juego:
                     r['llegaron'] += 1
                 else:
                     r['saciados'] += 1
+=======
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
             if e.estado == 'llego':
                 self.vida_base -= 1
                 self.presupuesto_ia += RECOMPENSA_IA_LLEGADA
@@ -279,7 +297,10 @@ class Juego:
         self.efectos = [[a, b, c, d, v - 1] for a, b, c, d, v in self.efectos if v > 1]
         if self.vida_base <= 0:
             self.fase = 'derrota'
+<<<<<<< HEAD
             self._guardar_historial()
+=======
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
 
     def _terminar_ronda(self):
         self.memoria.terminar_ronda()
@@ -289,6 +310,7 @@ class Juego:
         self.fase = 'resumen'
         if self.ronda == RONDA_FINAL:
             self.fase = 'victoria'
+<<<<<<< HEAD
         self._guardar_historial()
 
     def _guardar_historial(self):
@@ -299,3 +321,5 @@ class Juego:
         datos_ronda['vida_base'] = self.vida_base
         datos_ronda['celdas_conocidas'] = self.memoria.celdas_conocidas()
         self.historial_rondas.append(datos_ronda)
+=======
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f

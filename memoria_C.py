@@ -35,8 +35,11 @@ class MemoriaIA:
         self.peligro_actual[clave] = self.peligro_actual.get(clave, 0) + fraccion
 
     def costo_celda(self, tipo, celda):
+<<<<<<< HEAD
         if tipo == 'jefe':
             tipo = 'jabali'
+=======
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
         # costo base 1 + PESO_PELIGRO por cada panza completa rellenada a ese tipo
         # en esa celda (dentro de las ultimas VENTANA_RONDAS rondas)
         return 1 + PESO_PELIGRO * self.peligro_anterior.get((tipo, celda), 0)
@@ -48,4 +51,8 @@ class MemoriaIA:
         self.peligro_anterior = {}
         for ronda in self.historial:
             for clave, n in ronda.items():
+<<<<<<< HEAD
                 self.peligro_anterior[clave] = self.peligro_anterior.get(clave, 0) + n
+=======
+                self.peligro_anterior[clave] = self.peligro_anterior.get(clave, 0) + n
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f

@@ -38,7 +38,11 @@ ESTADISTICAS_ENEMIGO = {
     'jabali':  {'panza_maxima': 160, 'ticks_por_paso': 3, 'vision': 1, 'costo': 30, 'invisible': False, 'recompensa': 20},
 }
 
+<<<<<<< HEAD
 RONDA_FINAL = 20
+=======
+RONDA_FINAL = 35
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
 
 ESTADISTICAS_ENEMIGO['jefe'] = {'panza_maxima': 600, 'ticks_por_paso': 3, 'vision': 3,
                                 'costo': 150, 'invisible': False, 'recompensa': 100}
@@ -69,4 +73,8 @@ FRACCION_GASTO_IA = 0.6          # fraccion del presupuesto que la IA gasta por 
 TOPE_BONO_EXPLORACION = 60       # maximo bono de exploracion por ronda
 INTERVALO_SPAWN_MIN = 2          # el intervalo de spawn nunca baja de esto
 RONDAS_POR_REDUCCION_SPAWN = 4   # cada cuantas rondas baja 1 tick el intervalo
+<<<<<<< HEAD
 MAX_TORRES = 10 # maximo de torres que puede tener el jugador en el mapa
+=======
+MAX_TORRES = 10 # maximo de torres que puede tener el jugador en el mapa
+>>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
