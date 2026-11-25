@@ -1,19 +1,18 @@
 """
 Panel detallado de la IA (se abre con TAB desde el juego).
 Solo LEE el estado del juego (juego.memoria, juego.rastros, juego.metricas...)
-y dibuja. No cambia nada de la partida, salvo las teclas E y X de la pestaña
-de Q-learning (ver manejar_tecla).
+y dibuja. No cambia nada de la partida.
 
 Pestanas (de la mas simple a la mas compleja):
     1. Mapa de la IA   -> lo que conoce y donde cree que hay peligro
     2. Rutas           -> por donde camina cada algoritmo
     3. Metricas        -> tablas y graficas de rendimiento
-    4. Q-learning      -> como aprende el jefe
+    4. Comandante      -> que tropas manda la IA y que mezcla aprendio
 """
 import pygame
 
-import algoritmos
 from datos import mapa_P, CAMINO, META, DESCONOCIDO, ENTRADA, META_POS, RONDA_FINAL
+from agente_ia import NOMBRES_MEZCLA
 
 FILAS, COLS = mapa_P.shape
 
@@ -37,19 +36,21 @@ COLOR_TORRE = {'basica': (240, 240, 240), 'pesada': (120, 120, 210),
 COLOR_ENEMIGO = {'topo': (150, 100, 60), 'mapache': (170, 170, 180),
                  'jabali': (190, 50, 50), 'jefe': (170, 40, 170)}
 COLOR_ALGORITMO = {'bfs_exploracion': (110, 190, 255), 'a_estrella': (255, 190, 80),
+                   'dijkstra_pesimista': (120, 220, 140),
                    'q_learning': (200, 120, 255), 'bfs': (170, 170, 170)}
 NOMBRE_ALGORITMO = {'bfs_exploracion': 'BFS exploracion', 'a_estrella': 'A*',
+                    'dijkstra_pesimista': 'Dijkstra pesimista',
                     'q_learning': 'Q-learning', 'bfs': 'BFS'}
 
-PESTANAS = ['1. Mapa de la IA', '2. Rutas', '3. Metricas', '4. Q-learning']
-FILTROS = ['todos', 'topo', 'mapache', 'jabali', 'jefe']
-ALGORITMOS_MOSTRADOS = ['bfs_exploracion', 'a_estrella', 'q_learning']
+PESTANAS = ['1. Mapa de la IA', '2. Rutas', '3. Metricas', '4. Comandante']
+FILTROS = ['todos', 'topo', 'mapache', 'jabali']
+ALGORITMOS_MOSTRADOS = ['bfs_exploracion', 'a_estrella', 'dijkstra_pesimista']
 
 AYUDA = [
-    'T: cambiar el tipo de enemigo del peligro  |  1-4 o flechas izq/der: pestanas  |  TAB: volver al juego',
+    'T: cambiar el tipo de enemigo del riesgo  |  1-4 o flechas izq/der: pestanas  |  TAB: volver al juego',
     'R: acumulado / solo esta ronda  |  V: mostrar celdas visitadas  |  1-4 o flechas izq/der: pestanas  |  TAB: volver',
     '1-4 o flechas izq/der: pestanas  |  TAB: volver al juego',
-    'E: entrenar al jefe ahora (con el mapa que conoce la IA)  |  X: reiniciar el agente  |  TAB: volver',
+    'Estado = mezcla de la ronda anterior  |  Accion = mezcla de esta ronda  |  1-4 o flechas izq/der: pestanas  |  TAB: volver',
 ]
 
 
@@ -242,12 +243,19 @@ def media_movil(valores, ventana):
 # Pestana 1: mapa de la IA
 # ---------------------------------------------------------------
 def peligro_por_celda(memoria, tipo):
-    total = {}
-    for fuente in (memoria.peligro_anterior, memoria.peligro_actual):
-        for (t, celda), valor in fuente.items():
-            if tipo == 'todos' or t == tipo:
-                total[celda] = total.get(celda, 0) + valor
-    return total
+    # riesgo por celda: fraccion de panza que se le llena, en promedio, a cada enemigo que pasa
+    tipos = ['topo', 'mapache', 'jabali'] if tipo == 'todos' else [tipo]
+    celdas = set()
+    for fuente in (memoria.pasadas_anterior, memoria.pasadas_actual):
+        for (t, celda) in fuente:
+            if t in tipos:
+                celdas.add(celda)
+    riesgo = {}
+    for celda in celdas:
+        valor = max(memoria.riesgo(t, celda) for t in tipos)
+        if valor > 0:
+            riesgo[celda] = valor
+    return riesgo
 
 
 def pestana_mapa(pantalla, juego, estado, fuentes, area):
@@ -258,9 +266,8 @@ def pestana_mapa(pantalla, juego, estado, fuentes, area):
 
     tipo = FILTROS[estado['filtro']]
     peligro = peligro_por_celda(memoria, tipo)
-    maximo = max(peligro.values()) if peligro else 0
     for celda, valor in peligro.items():
-        pintar_celda(pantalla, origen, tam, celda, color_calor(valor / maximo), 190)
+        pintar_celda(pantalla, origen, tam, celda, color_calor(min(1.0, valor)), 190)
 
     for t in juego.torres:
         r = rect_celda_mapa(origen, tam, t.fila, t.col).inflate(-tam // 3, -tam // 3)
@@ -287,16 +294,16 @@ def pestana_mapa(pantalla, juego, estado, fuentes, area):
     barra_progreso(pantalla, pygame.Rect(x, y + 22, ancho, 10), conocidas / total, ACENTO)
     y += 48
 
-    texto(pantalla, fuentes['peq'], f'Peligro mostrado: {tipo}  (T para cambiar)', x, y)
-    texto(pantalla, fuentes['mini'], 'Se suma la ventana de rondas y la ronda actual', x, y + 20, SUAVE)
+    texto(pantalla, fuentes['peq'], f'Riesgo mostrado: {tipo}  (T para cambiar)', x, y)
+    texto(pantalla, fuentes['mini'], 'Promedio por enemigo: ventana de rondas + ronda actual', x, y + 20, SUAVE)
     y += 44
-    texto(pantalla, fuentes['peq'], f'Celdas con peligro: {len(peligro)}', x, y)
+    texto(pantalla, fuentes['peq'], f'Celdas con riesgo: {len(peligro)}', x, y)
     y += 24
-    texto(pantalla, fuentes['mini'], 'Mas peligrosas (1.0 = una panza llena):', x, y, SUAVE)
+    texto(pantalla, fuentes['mini'], 'Mas riesgosas (1.0 = la panza se llena ahi):', x, y, SUAVE)
     y += 20
     top = sorted(peligro.items(), key=lambda kv: kv[1], reverse=True)[:5]
     if not top:
-        texto(pantalla, fuentes['mini'], 'Todavia no hay golpes registrados', x, y)
+        texto(pantalla, fuentes['mini'], 'Todavia no hay riesgo registrado', x, y)
         y += 18
     for celda, valor in top:
         texto(pantalla, fuentes['mini'], f'  fila {celda[0]}, col {celda[1]}:   {valor:.2f}', x, y)
@@ -309,7 +316,7 @@ def pestana_mapa(pantalla, juego, estado, fuentes, area):
         texto(pantalla, fuentes['mini'], 'Ultima oleada: ' + ', '.join(partes), x, y)
         y += 24
 
-    leyenda_calor(pantalla, x, y, ancho, fuentes, 'poco peligro', 'mucho')
+    leyenda_calor(pantalla, x, y, ancho, fuentes, 'poco riesgo', 'mucho')
     y += 44
     for linea in ['Zona oscura: la IA aun no la conoce', 'Cuadros: torres  |  Circulos: enemigos',
                   'Anillo blanco: entrada y meta']:
@@ -399,8 +406,8 @@ def pestana_metricas(pantalla, juego, estado, fuentes, area):
     if not filas:
         texto(pantalla, fuentes['peq'], 'Aun no hay busquedas: inicia una ronda.', area.x + 20, y + 32, SUAVE)
     y += 28 + 26 * max(len(filas), 1) + 8
-    texto(pantalla, fuentes['mini'], "Q-learning: 'generados' cuenta las actualizaciones de la tabla Q "
-          "(si no converge, el jefe usa A*).", area.x + 10, y, SUAVE)
+    texto(pantalla, fuentes['mini'], "Dijkstra pesimista: si no conoce ruta a la meta, va a la frontera mas barata "
+          "(jabali y jefe comparten esta fila).", area.x + 10, y, SUAVE)
 
     # barras
     y += 24
@@ -438,104 +445,90 @@ def pestana_metricas(pantalla, juego, estado, fuentes, area):
 
 
 # ---------------------------------------------------------------
-# Pestana 4: Q-learning
+# Pestana 4: comandante
 # ---------------------------------------------------------------
-def camino_politica(q, inicio, meta, limite=500):
-    # sigue la mejor accion de cada celda, igual que hace q_learning al devolver el camino
-    camino = [inicio]
-    estado = inicio
-    vistos = {inicio}
-    for _ in range(limite):
-        if estado == meta or estado not in q:
-            break
-        valores = q[estado]
-        accion = valores.index(max(valores))
-        df, dc = algoritmos.MOVIMIENTOS[accion]
-        estado = (estado[0] + df, estado[1] + dc)
-        if estado in vistos or not (0 <= estado[0] < FILAS and 0 <= estado[1] < COLS):
-            break
-        camino.append(estado)
-        vistos.add(estado)
-    return camino
+def texto_oleada(composicion):
+    # {'topo': 3, 'mapache': 2} -> 'T3 M2'
+    letras = {'topo': 'T', 'mapache': 'M', 'jabali': 'J', 'jefe': 'JEFE'}
+    return ' '.join(letras[t] + str(n) for t, n in composicion.items())
 
 
-def pestana_qlearning(pantalla, juego, estado, fuentes, area):
-    agente = algoritmos.agente
-    q = agente.q
-    historial = agente.historial
-    llamadas = agente.llamadas
-
-    # ---- columna izquierda: cifras y graficas ----
-    ancho_izq = 360
+def pestana_comandante(pantalla, juego, estado, fuentes, area):
+    c = juego.comandante
     x = area.x + 10
     y = area.y + 10
-    cuadro = pygame.Rect(x, y, ancho_izq, 170)
-    caja(pantalla, cuadro)
-    texto(pantalla, fuentes['peq'], 'Agente del jefe (Q-learning)', x + 8, y + 6, ACENTO)
-    lineas = [f'Estados en la tabla Q: {len(q)}',
-              f'alpha {agente.alpha}  |  gamma {agente.gamma}  |  epsilon {agente.epsilon}']
-    if llamadas:
-        convergieron = sum(1 for c in llamadas if c['convergio'])
-        llegaron = sum(1 for h in historial if h['llego'])
-        ultima = llamadas[-1]
-        lineas.append(f'Entrenamientos: {len(llamadas)}  (convergieron {convergieron})')
-        lineas.append(f'Episodios guardados: {len(historial)}  |  llegaron: {100 * llegaron // max(1, len(historial))}%')
-        if ultima['convergio']:
-            lineas.append(f'Ultimo: {ultima["llegadas"]}/{ultima["episodios"]} llegadas, camino de {ultima["largo"]}')
+    texto(pantalla, fuentes['titulo'], 'Comandante de la IA', x, y, ACENTO)
+    y += 34
+
+    # ---- agente de utilidad: evaluacion previa de la ultima oleada ----
+    texto(pantalla, fuentes['peq'], 'Evaluacion previa (la ruta que elegiria cada tropa)', x, y)
+    y += 22
+    columnas = [('Tipo', 80), ('Algoritmo', 140), ('Pasos', 50), ('Llegada', 65), ('Riesgo', 60), ('P(llegar)', 75), ('Compra', 70)]
+    filas = []
+    colores = []
+    for tipo in ('topo', 'mapache', 'jabali', 'jefe'):
+        nombre = NOMBRE_ALGORITMO.get(juego.algoritmo_por_tipo[tipo], juego.algoritmo_por_tipo[tipo])
+        ev = c.evaluacion.get(tipo)
+        if ev:
+            compra = '-' if tipo == 'jefe' else ('si' if ev['compra'] else 'ahorra')
+            filas.append([tipo, nombre, str(ev['largo']), str(ev['eta']), f"{ev['riesgo']:.2f}", f"{ev['prob']:.2f}", compra])
         else:
-            lineas.append('Ultimo: no convergio (el jefe uso A*)')
-        recientes = [h['recompensa'] for h in historial[-20:]]
-        lineas.append(f'Recompensa media (ultimos 20): {sum(recientes) / len(recientes):.0f}')
-    else:
-        lineas.append('Todavia no hay entrenamientos.')
-        lineas.append('Se entrena solo cuando aparece el jefe,')
-        lineas.append('o pulsando E para verlo ahora.')
-    lineas.append(f'Ronda del jefe: {RONDA_FINAL}  (ahora: ronda {juego.ronda})')
-    ly = y + 30
-    for linea in lineas:
-        texto(pantalla, fuentes['mini'], linea, x + 8, ly)
-        ly += 19
+            filas.append([tipo, nombre, '-', '-', '-', '-', '-'])
+        colores.append(COLOR_ENEMIGO[tipo])
+    tabla(pantalla, x, y, columnas, filas, colores, fuentes)
+    y += 28 + 26 * 4 + 6
+    texto(pantalla, fuentes['mini'], f'P(llegar) = 1 - riesgo acumulado  |  se compra un tipo si P x {c.valor_llegada} cubre su costo; si no, ahorra',
+          x, y, SUAVE)
+    y += 30
 
-    alto = (area.height - 30 - 170) // 2
-    recompensas = [h['recompensa'] for h in historial]
-    llegadas = [100 if h['llego'] else 0 for h in historial]
-    grafica_lineas(pantalla, pygame.Rect(x, y + 180, ancho_izq, alto),
-                   'Recompensa por episodio (media de 20)',
-                   [('recompensa', media_movil(recompensas, 20), (200, 120, 255))], fuentes)
-    grafica_lineas(pantalla, pygame.Rect(x, y + 190 + alto, ancho_izq, alto),
-                   'Episodios que llegan a la meta (%)',
-                   [('llegada %', media_movil(llegadas, 20), (80, 200, 100))], fuentes)
+    # ---- agente de refuerzo: tabla Q ----
+    texto(pantalla, fuentes['peq'], 'Tabla Q: estado (mezcla anterior) x accion (mezcla nueva)', x, y)
+    y += 22
+    ancho_et = 120
+    ancho_c = 130
+    caja(pantalla, pygame.Rect(x, y, ancho_et + 3 * ancho_c, 32 + 28 * 3))
+    for j, mezcla in enumerate(NOMBRES_MEZCLA):
+        texto(pantalla, fuentes['mini'], mezcla, x + ancho_et + j * ancho_c + 8, y + 8, SUAVE)
+    for i, s in enumerate(NOMBRES_MEZCLA):
+        fy = y + 34 + i * 28
+        color_et = ACENTO if s == c.mezcla_anterior else TEXTO
+        texto(pantalla, fuentes['peq'], s, x + 8, fy + 2, color_et)
+        mejor = max(c.q[s].values())
+        for j, a in enumerate(NOMBRES_MEZCLA):
+            v = c.q[s][a]
+            rect = pygame.Rect(x + ancho_et + j * ancho_c + 4, fy - 3, ancho_c - 8, 24)
+            pygame.draw.rect(pantalla, color_calor(1 - min(1.0, max(0.0, v))), rect)
+            if v == mejor:
+                pygame.draw.rect(pantalla, (255, 255, 255), rect, 2)
+            texto(pantalla, fuentes['peq'], f'{v:.2f}', rect.x + 8, rect.y + 4, (20, 20, 20))
+    y += 32 + 28 * 3 + 8
+    actual = c.mezcla_actual or (c.historial[-1]['mezcla'] if c.historial else '-')
+    for linea in [f'alpha {c.alfa}  |  gamma {c.gamma}  |  epsilon {c.epsilon}  (en la ronda {RONDA_FINAL}: 0)',
+                  f'Estado actual: {c.mezcla_anterior}  |  mezcla de la ultima oleada: {actual}',
+                  'Verde = valor alto  |  Borde blanco = la accion que elegiria sin azar']:
+        texto(pantalla, fuentes['mini'], linea, x, y, SUAVE)
+        y += 18
 
-    # ---- mapa de valores Q y politica ----
-    tam = max(6, min((area.width - ancho_izq - 40) // COLS, (area.height - 70) // FILAS))
-    origen = (area.x + ancho_izq + 30, area.y + 10)
-    dibujar_terreno(pantalla, origen, tam)
+    # ---- columna derecha: historial y premio ----
+    x2 = x + 555
+    ancho2 = area.right - x2 - 10
+    y2 = area.y + 10
+    texto(pantalla, fuentes['peq'], 'Rondas jugadas por el comandante', x2, y2 + 6)
+    y2 += 30
+    ultimas = c.historial[-8:]
+    columnas = [('Ronda', 50), ('Estado', 80), ('Mezcla', 80), ('Premio', 55), ('Gasto', 55), ('Caja', 55), ('Oleada', ancho2 - 375)]
+    filas = []
+    for h in ultimas:
+        filas.append([str(h['ronda']), h['estado'], h['mezcla'], f"{h['premio']:.2f}", str(h['gasto']), str(h['caja']), texto_oleada(h['composicion'])])
+    tabla(pantalla, x2, y2, columnas, filas, [TEXTO] * len(filas), fuentes)
+    if not filas:
+        texto(pantalla, fuentes['mini'], 'Todavia no hay rondas terminadas.', x2 + 8, y2 + 34, SUAVE)
+    y2 += 28 + 26 * max(len(ultimas), 1) + 10
 
-    maximos = {celda: max(valores) for celda, valores in q.items()}
-    if maximos:
-        vmin = min(maximos.values())
-        vmax = max(maximos.values())
-        for celda, v in maximos.items():
-            norm = (v - vmin) / (vmax - vmin) if vmax > vmin else 0.5
-            pintar_celda(pantalla, origen, tam, celda, color_calor(1 - norm), 200)   # verde = valor alto
-        for celda, valores in q.items():
-            if any(v != 0 for v in valores):
-                df, dc = algoritmos.MOVIMIENTOS[valores.index(max(valores))]
-                flecha(pantalla, centro_celda_mapa(origen, tam, celda), dc, df, tam * 0.3, (25, 25, 25))
-        camino = camino_politica(q, ENTRADA, META_POS)
-        if len(camino) >= 2:
-            puntos = [centro_celda_mapa(origen, tam, c) for c in camino]
-            pygame.draw.lines(pantalla, (255, 255, 255), False, puntos, 3)
-    else:
-        texto(pantalla, fuentes['peq'], 'La tabla Q esta vacia: el agente aun no ha explorado nada.',
-              origen[0], origen[1] + FILAS * tam + 8, SUAVE)
-    marcar_entrada_meta(pantalla, origen, tam)
-
-    ly = origen[1] + FILAS * tam + 10
-    if maximos:
-        leyenda_calor(pantalla, origen[0], ly, 260, fuentes, 'valor Q bajo', 'alto', invertir=True)
-        texto(pantalla, fuentes['mini'], 'Flechas: mejor accion de cada celda  |  Linea blanca: camino que seguiria el jefe',
-              origen[0], ly + 32, SUAVE)
+    premios = [h['premio'] for h in c.historial]
+    alto = area.bottom - y2 - 6
+    grafica_lineas(pantalla, pygame.Rect(x2, y2, ancho2, alto), 'Premio por ronda (llegadas + cercania al nucleo)',
+                   [('premio', premios, (110, 190, 255))], fuentes)
 
 
 # ---------------------------------------------------------------
@@ -558,7 +551,7 @@ def dibujar_panel_ia(pantalla, juego, estado, fuentes):
     elif pestana == 2:
         pestana_metricas(pantalla, juego, estado, fuentes, area)
     else:
-        pestana_qlearning(pantalla, juego, estado, fuentes, area)
+        pestana_comandante(pantalla, juego, estado, fuentes, area)
     texto(pantalla, fuentes['mini'], AYUDA[pestana], 10, alto - 20, SUAVE)
 
 
@@ -587,10 +580,3 @@ def manejar_tecla(juego, estado, tecla):
         estado['acumulado'] = not estado['acumulado']
     elif tecla == pygame.K_v:
         estado['visitados'] = not estado['visitados']
-    elif tecla == pygame.K_e and estado['pestana'] == 3:
-        # entrena al jefe ahora con el mapa que conoce la IA (el agente es el mismo que usara en la ronda final)
-        costo = lambda celda: juego.memoria.costo_celda('jefe', celda)
-        algoritmos.q_learning(juego.memoria.mapa_conocido, ENTRADA, META_POS, costo)
-    elif tecla == pygame.K_x and estado['pestana'] == 3:
-        viejo = algoritmos.agente
-        algoritmos.agente = algoritmos.AgenteQLearning(viejo.alpha, viejo.gamma, viejo.epsilon)
