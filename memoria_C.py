@@ -7,9 +7,13 @@ class MemoriaIA:
 
     - mapa_conocido: nunca se olvida (empieza todo en DESCONOCIDO).
     - peligro: para cada (tipo, celda), la fraccion de panza que las torres
-      rellenaron ahi (1.0 = una panza llena = un enemigo saciado). Durante una
-      ronda se acumula en peligro_actual; la IA se guia por peligro_anterior,
-      que suma las ultimas VENTANA_RONDAS rondas.
+      rellenaron ahi (1.0 = una panza llena). Es una SUMA sobre todos los enemigos.
+    - pasadas: para cada (tipo, celda), cuantos enemigos pasaron por ahi.
+    - riesgo = peligro / pasadas: la fraccion de panza que se le llena, EN PROMEDIO,
+      a un enemigo de ese tipo que pasa por la celda. Asi una ruta muy usada no parece
+      peligrosa solo por tener mas trafico.
+    Durante una ronda se acumula en *_actual; el riesgo suma las ultimas VENTANA_RONDAS
+    rondas (*_anterior) mas lo que va de la ronda actual (asi la IA aprende dentro de la ronda).
     """
 
     def __init__(self, mapa_real):
@@ -17,7 +21,10 @@ class MemoriaIA:
         self.mapa_conocido = np.full((filas, cols), DESCONOCIDO)
         self.peligro_anterior = {}   # suma de las ultimas VENTANA_RONDAS rondas
         self.peligro_actual = {}
+        self.pasadas_anterior = {}
+        self.pasadas_actual = {}
         self.historial = []          # peligro de cada una de esas rondas
+        self.historial_pasadas = []  # pasadas de cada una de esas rondas
 
     def revelar(self, mapa_real, fila, col, radio):
         filas, cols = mapa_real.shape
@@ -34,25 +41,37 @@ class MemoriaIA:
         clave = (tipo, celda)
         self.peligro_actual[clave] = self.peligro_actual.get(clave, 0) + fraccion
 
-    def costo_celda(self, tipo, celda):
-<<<<<<< HEAD
+    def registrar_pasada(self, tipo, celda):
+        clave = (tipo, celda)
+        self.pasadas_actual[clave] = self.pasadas_actual.get(clave, 0) + 1
+
+    def riesgo(self, tipo, celda):
         if tipo == 'jefe':
-            tipo = 'jabali'
-=======
->>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
-        # costo base 1 + PESO_PELIGRO por cada panza completa rellenada a ese tipo
-        # en esa celda (dentro de las ultimas VENTANA_RONDAS rondas)
-        return 1 + PESO_PELIGRO * self.peligro_anterior.get((tipo, celda), 0)
+            tipo = 'jabali'          # el jefe solo sale una vez: usa lo que la IA sabe del jabali
+        clave = (tipo, celda)
+        pasadas = self.pasadas_anterior.get(clave, 0) + self.pasadas_actual.get(clave, 0)
+        if pasadas == 0:
+            return 0.0               # nadie ha pasado por ahi: se asume seguro (la IA es optimista)
+        peligro = self.peligro_anterior.get(clave, 0) + self.peligro_actual.get(clave, 0)
+        return peligro / pasadas
+
+    def costo_celda(self, tipo, celda):
+        # costo base 1 + PESO_PELIGRO por cada panza completa que se le llena en promedio
+        return 1 + PESO_PELIGRO * self.riesgo(tipo, celda)
 
     def terminar_ronda(self):
         self.historial.append(self.peligro_actual)
+        self.historial_pasadas.append(self.pasadas_actual)
         self.historial = self.historial[-VENTANA_RONDAS:]
+        self.historial_pasadas = self.historial_pasadas[-VENTANA_RONDAS:]
         self.peligro_actual = {}
-        self.peligro_anterior = {}
-        for ronda in self.historial:
+        self.pasadas_actual = {}
+        self.peligro_anterior = self._sumar(self.historial)
+        self.pasadas_anterior = self._sumar(self.historial_pasadas)
+
+    def _sumar(self, rondas):
+        total = {}
+        for ronda in rondas:
             for clave, n in ronda.items():
-<<<<<<< HEAD
-                self.peligro_anterior[clave] = self.peligro_anterior.get(clave, 0) + n
-=======
-                self.peligro_anterior[clave] = self.peligro_anterior.get(clave, 0) + n
->>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
+                total[clave] = total.get(clave, 0) + n
+        return total
