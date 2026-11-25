@@ -1,19 +1,21 @@
+from collections import deque
 from datos import (RONDA_FINAL, mapa_P, FUERA, ENTRADA, META_POS, ESTADISTICAS_ENEMIGO,
-                   ESTADISTICAS_TORRE, VIDA_BASE, PRESUPUESTO_JUGADOR_INICIAL,
+                   ESTADISTICAS_TORRE, PRESUPUESTO_JUGADOR_INICIAL,
                    PRESUPUESTO_IA_INICIAL, RECOMPENSA_IA_LLEGADA, PRESUPUESTO_IA_MINIMO,
                    INGRESO_BASE_IA, CRECIMIENTO_IA_POR_RONDA,
-                   BONO_EXPLORACION, INTERVALO_SPAWN, LIMITE_TICKS_RONDA, FRACCION_GASTO_IA, 
-                   TOPE_BONO_EXPLORACION, INTERVALO_SPAWN_MIN, RONDAS_POR_REDUCCION_SPAWN, MAX_TORRES )
+                   BONO_EXPLORACION, INTERVALO_SPAWN, LIMITE_TICKS_RONDA, 
+                   TOPE_BONO_EXPLORACION, INTERVALO_SPAWN_MIN, RONDAS_POR_REDUCCION_SPAWN, MAX_TORRES, DIFICULTADES, PESO_PROGRESO)
 from entidades_struc import Enemigo, Torre
 from memoria_C import MemoriaIA
+from agente_ia import Comandante
 import algoritmos
 
 # Que algoritmo usa cada tipo de enemigo
 ALGORITMO_POR_TIPO = {
     'topo': 'bfs_exploracion',
     'mapache': 'a_estrella',
-    'jabali': 'a_estrella',
-    'jefe': 'q_learning'
+    'jabali': 'dijkstra_pesimista',
+    'jefe': 'dijkstra_pesimista'
 }
 
 
@@ -22,32 +24,55 @@ class Juego:
     manda ordenes (colocar_torre, iniciar_ronda, paso...). Asi el benchmark
     puede correr rondas sin ventana."""
 
-    def __init__(self):
+    def __init__(self, dificultad='normal'):
+        self.dificultad = dificultad
+        self.ajustes = DIFICULTADES[dificultad]
         self.mapa_real = mapa_P
+        self.dist_meta = self._distancias_a_meta()   # pasos por el camino real hasta el nucleo (solo para el premio)
         self.memoria = MemoriaIA(self.mapa_real)
+        self.comandante = Comandante(self.ajustes['valor_llegada'])     # decide que tropas manda la IA (ver agente_ia.py)
+        self.resultado_por_tipo = {}       # enviados, llegaron y saciados de cada tipo (acumulado)
         self.torres = []
         self.enemigos = []
         self.cola_spawn = []        # [tick_de_aparicion, tipo]
         self.efectos = []           # disparos para dibujar: [f1, c1, f2, c2, vida]
         self.ronda = 1
         self.fase = 'preparacion'   # 'preparacion', 'ronda', 'resumen', 'derrota'
-        self.vida_base = VIDA_BASE
+        self.vida_maxima = self.ajustes['vida_base']
+        self.vida_base = self.vida_maxima
         self.presupuesto_jugador = PRESUPUESTO_JUGADOR_INICIAL
-        self.presupuesto_ia = PRESUPUESTO_IA_INICIAL
+        self.presupuesto_ia = int(PRESUPUESTO_IA_INICIAL * self.ajustes['dinero_ia'])
         self.tick = 0
         self.stats_ronda = {}
         self.celdas_al_inicio = 0
         self.algoritmo_por_tipo = dict(ALGORITMO_POR_TIPO)
         self.metricas = {}          # metricas acumuladas por algoritmo
-<<<<<<< HEAD
         # --- datos para la interfaz de la IA ---
         self.rastros = {}           # rastros[algoritmo][celda] = veces que un enemigo piso la celda (acumulado)
         self.rastros_ronda = {}     # lo mismo pero solo de la ronda actual
         self.ultima_busqueda = {}   # ultima busqueda de cada algoritmo (visitados y camino)
         self.resultado_por_algoritmo = {}   # cuantos enemigos de cada algoritmo llegaron o fueron saciados
         self.historial_rondas = []  # un dict por ronda terminada
-=======
->>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
+
+    def _distancias_a_meta(self):
+        # BFS desde el nucleo sobre el mapa real: cuantos pasos le faltan a cada celda del camino
+        dist = {META_POS: 0}
+        cola = deque([META_POS])
+        while cola:
+            actual = cola.popleft()
+            for vecino in algoritmos.vecinos(self.mapa_real, actual[0], actual[1], optimista=False):
+                if vecino not in dist:
+                    dist[vecino] = dist[actual] + 1
+                    cola.append(vecino)
+        return dist
+
+    def _progreso(self, e):
+        # 0 = murio en la entrada, 1 = murio pegado al nucleo
+        total = self.dist_meta.get(ENTRADA, 0)
+        if total == 0:
+            return 0.0
+        faltan = self.dist_meta.get((e.fila, e.col), total)
+        return max(0.0, min(1.0, 1 - faltan / total))
 
     # Fase de preparacion (el jugador edita torres SOLO aqui)
     def torre_en(self, fila, col):
@@ -85,38 +110,36 @@ class Juego:
 
     # Rondas
 
+    def mejorar_torre(self, fila, col):
+        torre = self.torre_en(fila, col)
+        if self.fase != 'preparacion' or torre is None:
+            return False
+        costo = torre.costo_mejora()
+        if costo is None or costo > self.presupuesto_jugador:
+            return False
+        self.presupuesto_jugador -= costo
+        torre.mejorar()
+        return True
+
     def generar_oleada(self):
         self.presupuesto_ia = max(self.presupuesto_ia, PRESUPUESTO_IA_MINIMO)
         final = (self.ronda == RONDA_FINAL)
-        if final:
-            gasto = self.presupuesto_ia                     # gasta todo
-        else:
-            gasto = max(int(self.presupuesto_ia * FRACCION_GASTO_IA), PRESUPUESTO_IA_MINIMO)
-            gasto = min(gasto, self.presupuesto_ia)
-        self.presupuesto_ia -= gasto
-        disponible = gasto                                                               
+        caja = self.presupuesto_ia
         intervalo = max(INTERVALO_SPAWN_MIN,
                     INTERVALO_SPAWN - (self.ronda - 1) // RONDAS_POR_REDUCCION_SPAWN)
-        ciclo = ['topo', 'mapache', 'jabali']
-        i = 0
+        # el comandante evalua las rutas, elige la mezcla y decide que compra y cuanto guarda
+        evaluacion = self.comandante.evaluar(self.memoria, self.algoritmo_por_tipo)
+        mezcla = self.comandante.elegir_mezcla(final)
+        tipos, sobrante = self.comandante.componer(caja, evaluacion, mezcla, final)
         tiempo = 1
-        while True:
-            tipo = ciclo[i % 3]
-            costo = ESTADISTICAS_ENEMIGO[tipo]['costo']
-            if costo > disponible:                      
-                tipo = 'topo'
-                costo = ESTADISTICAS_ENEMIGO['topo']['costo']
-                if costo > disponible:                   
-                    break
-            disponible -= costo                         
+        for tipo in tipos:
             self.cola_spawn.append([tiempo, tipo])
-            tiempo += intervalo                          
-            i += 1
+            tiempo += intervalo
         if final:
-            self.cola_spawn.append([tiempo + INTERVALO_SPAWN, 'jefe'])   
-            disponible = 0
-        
-        self.presupuesto_ia += disponible               
+            self.cola_spawn.append([tiempo + INTERVALO_SPAWN, 'jefe'])
+            sobrante = 0
+        self.stats_ronda['gasto_ia'] = caja - sobrante
+        self.presupuesto_ia = sobrante
 
     def iniciar_ronda(self):
         if self.fase != 'preparacion':
@@ -125,22 +148,22 @@ class Juego:
         self.enemigos = []
         self.cola_spawn = []
         self.efectos = []
-<<<<<<< HEAD
         self.rastros_ronda = {}
-=======
->>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
         self.stats_ronda = {'enviados': 0, 'llegaron': 0, 'saciados': 0,
-                            'atascados': 0, 'celdas_nuevas': 0, 'dinero_ganado': 0}
+                            'atascados': 0, 'celdas_nuevas': 0, 'dinero_ganado': 0,
+                            'progreso_saciados': 0.0}
         self.celdas_al_inicio = self.memoria.celdas_conocidas()
         self.generar_oleada()
         self.stats_ronda['enviados'] = len(self.cola_spawn)
-<<<<<<< HEAD
         composicion = {}
         for item in self.cola_spawn:
             composicion[item[1]] = composicion.get(item[1], 0) + 1
         self.stats_ronda['composicion'] = composicion
-=======
->>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
+        self.stats_ronda['por_tipo'] = {}
+        for tipo, n in composicion.items():
+            self.stats_ronda['por_tipo'][tipo] = {'enviados': n, 'llegaron': 0, 'saciados': 0}
+            total = self.resultado_por_tipo.setdefault(tipo, {'enviados': 0, 'llegaron': 0, 'saciados': 0})
+            total['enviados'] += n
         self.fase = 'ronda'
         return True
 
@@ -149,7 +172,8 @@ class Juego:
             return False
         self.ronda += 1
         # presupuesto base de la IA: crece con las rondas (ademas de recompensas y bono)
-        self.presupuesto_ia += INGRESO_BASE_IA + CRECIMIENTO_IA_POR_RONDA * (self.ronda - 1)
+        ingreso = INGRESO_BASE_IA + CRECIMIENTO_IA_POR_RONDA * (self.ronda - 1)
+        self.presupuesto_ia += int(ingreso * self.ajustes['dinero_ia'])
         self.enemigos = []
         self.efectos = []
         self.fase = 'preparacion'
@@ -183,8 +207,9 @@ class Juego:
         pendientes = []
         for item in self.cola_spawn:
             if item[0] <= self.tick:
-                e = Enemigo(item[1], ENTRADA[0], ENTRADA[1])
+                e = Enemigo(item[1], ENTRADA[0], ENTRADA[1], self.ronda, self.ajustes['escala_panza'])
                 self.memoria.revelar(self.mapa_real, e.fila, e.col, e.vision)
+                self.memoria.registrar_pasada(e.tipo, (e.fila, e.col))
                 self.enemigos.append(e)
             else:
                 pendientes.append(item)
@@ -206,13 +231,10 @@ class Juego:
         m['frontera_max'] = max(m['frontera_max'], res.frontera_max)
         m['tiempo_ms'] += res.tiempo_ms
 
-<<<<<<< HEAD
         self.ultima_busqueda[nombre] = {'visitados': res.visitados, 'camino': list(res.camino),
                                         'inicio': (e.fila, e.col), 'tipo': e.tipo,
                                         'ronda': self.ronda, 'explorando': res.explorando}
 
-=======
->>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
     def _mover(self, e):
         e.espera -= 1
         if e.espera > 0:
@@ -237,14 +259,12 @@ class Juego:
         elif nueva_c > e.col:
             e.direccion = 'derecha'
         e.fila, e.col = nueva_f, nueva_c
-<<<<<<< HEAD
         nombre = self.algoritmo_por_tipo[e.tipo]
         for rastro in (self.rastros, self.rastros_ronda):
             celdas = rastro.setdefault(nombre, {})
             celdas[(e.fila, e.col)] = celdas.get((e.fila, e.col), 0) + 1
-=======
->>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
         self.memoria.revelar(self.mapa_real, e.fila, e.col, e.vision)
+        self.memoria.registrar_pasada(e.tipo, (e.fila, e.col))
         if (e.fila, e.col) == META_POS:
             e.estado = 'llego'
 
@@ -259,8 +279,11 @@ class Juego:
                 if e.estado != 'vivo' or not t.puede_ver(e) or not t.en_rango(e.fila, e.col):
                     continue
                 dist = (t.fila - e.fila) ** 2 + (t.col - e.col) ** 2
-                if mejor is None or dist < mejor:
-                    mejor = dist
+                # la torre de reconocimiento prioriza topos; luego, el mas cercano
+                prioridad = 0 if (t.uniq == 1 and e.invisible) else 1
+                clave = (prioridad, dist)
+                if mejor is None or clave < mejor:
+                    mejor = clave
                     objetivo = e
             if objetivo is None:
                 continue
@@ -277,32 +300,32 @@ class Juego:
 
     def _limpiar(self):
         for e in self.enemigos:
-<<<<<<< HEAD
             if e.estado in ('llego', 'saciado'):
                 r = self.resultado_por_algoritmo.setdefault(self.algoritmo_por_tipo[e.tipo],
                                                             {'llegaron': 0, 'saciados': 0})
-                if e.estado == 'llego':
-                    r['llegaron'] += 1
-                else:
-                    r['saciados'] += 1
-=======
->>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
+                campo = 'llegaron' if e.estado == 'llego' else 'saciados'
+                r[campo] += 1
+                self.stats_ronda['por_tipo'][e.tipo][campo] += 1
+                self.resultado_por_tipo[e.tipo][campo] += 1
             if e.estado == 'llego':
                 self.vida_base -= 1
                 self.presupuesto_ia += RECOMPENSA_IA_LLEGADA
                 self.stats_ronda['llegaron'] += 1
             elif e.estado == 'saciado':
                 self.stats_ronda['saciados'] += 1
+                self.stats_ronda['progreso_saciados'] += self._progreso(e)
         self.enemigos = [e for e in self.enemigos if e.estado == 'vivo']
         self.efectos = [[a, b, c, d, v - 1] for a, b, c, d, v in self.efectos if v > 1]
         if self.vida_base <= 0:
             self.fase = 'derrota'
-<<<<<<< HEAD
             self._guardar_historial()
-=======
->>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
 
     def _terminar_ronda(self):
+        # el comandante aprende: llegar vale 1; una tropa saciada vale PESO_PROGRESO x lo cerca que llego del nucleo
+        enviados = self.stats_ronda['enviados']
+        puntos = self.stats_ronda['llegaron'] + PESO_PROGRESO * self.stats_ronda['progreso_saciados']
+        premio = puntos / enviados if enviados else 0.0
+        self.comandante.aprender(self.ronda, premio, self.stats_ronda['composicion'])
         self.memoria.terminar_ronda()
         nuevas = self.memoria.celdas_conocidas() - self.celdas_al_inicio
         self.stats_ronda['celdas_nuevas'] = nuevas
@@ -310,7 +333,6 @@ class Juego:
         self.fase = 'resumen'
         if self.ronda == RONDA_FINAL:
             self.fase = 'victoria'
-<<<<<<< HEAD
         self._guardar_historial()
 
     def _guardar_historial(self):
@@ -321,5 +343,3 @@ class Juego:
         datos_ronda['vida_base'] = self.vida_base
         datos_ronda['celdas_conocidas'] = self.memoria.celdas_conocidas()
         self.historial_rondas.append(datos_ronda)
-=======
->>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
