@@ -2,12 +2,9 @@ import os
 import pygame
 
 from datos import (MAX_TORRES, mapa_P, FUERA, CAMINO, META, DESCONOCIDO,
-                   ESTADISTICAS_TORRE, ESTADISTICAS_ENEMIGO, )
+                   ESTADISTICAS_TORRE, ESTADISTICAS_ENEMIGO, MEJORA_COSTO, DIFICULTADES)
 from motor import Juego
-<<<<<<< HEAD
 import panel_ia
-=======
->>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
 
 # Configuracion visual
 
@@ -86,10 +83,26 @@ def rects_panel():
     return rects
 
 
-def rects_menu():
+def rects_menu(hay_partida=False):
     cx = ANCHO // 2
-    return {'jugar': pygame.Rect(cx - 100, 260, 200, 50),
-            'salir': pygame.Rect(cx - 100, 330, 200, 50)}
+    botones = ['continuar'] if hay_partida else []
+    botones += ['jugar', 'salir']
+    rects = {}
+    y = 240
+    for clave in botones:
+        rects[clave] = pygame.Rect(cx - 110, y, 220, 50)
+        y += 70
+    return rects
+
+
+def rects_dificultad():
+    ancho, alto, separacion = 250, 250, 30
+    x0 = (ANCHO - (3 * ancho + 2 * separacion)) // 2
+    rects = {}
+    for i, clave in enumerate(DIFICULTADES):
+        rects[clave] = pygame.Rect(x0 + i * (ancho + separacion), 170, ancho, alto)
+    rects['volver'] = pygame.Rect(ANCHO // 2 - 100, 470, 200, 44)
+    return rects
 
 
 # ---------------------------------------------------------------
@@ -136,6 +149,8 @@ def dibujar_torres(pantalla, juego, sprites, fuente):
             pygame.draw.rect(pantalla, COLOR_TORRE[t.tipo], r.inflate(-10, -10))
             pygame.draw.rect(pantalla, (0, 0, 0), r.inflate(-10, -10), 2)
             texto(pantalla, fuente, t.tipo[0].upper(), r.x + 17, r.y + 14, (0, 0, 0))
+        if t.nivel > 1:
+            texto(pantalla, fuente, str(t.nivel), r.right - 12, r.y + 2, (255, 255, 120))
 
 
 def dibujar_enemigos(pantalla, juego, sprites):
@@ -169,16 +184,16 @@ def dibujar_hover(pantalla, juego, seleccionada, pos_mouse):
     pygame.draw.rect(pantalla, color, rect_celda(fila, col), 2)
     if valida:
         rango = ESTADISTICAS_TORRE[seleccionada]['rango']
-        pygame.draw.circle(pantalla, (255, 255, 255), centro_celda(fila, col), rango * CELDA, 1)
+        pygame.draw.circle(pantalla, (255, 255, 255), centro_celda(fila, col), int(rango * CELDA), 1)
 
 
 def dibujar_panel(pantalla, juego, fuente, fuente_peq, seleccionada, velocidad, ver_ia):
     x0 = COLS * CELDA
     pygame.draw.rect(pantalla, COLOR_PANEL, (x0, 0, ANCHO_PANEL, ALTO))
     x = x0 + 15
-    texto(pantalla, fuente, 'Ronda ' + str(juego.ronda), x, 12)
+    texto(pantalla, fuente, 'Ronda ' + str(juego.ronda) + '  ' + juego.ajustes['nombre'], x, 12)
     texto(pantalla, fuente, 'Fase: ' + juego.fase, x, 36)
-    texto(pantalla, fuente, 'Vida de la base: ' + str(juego.vida_base), x, 60)
+    texto(pantalla, fuente, 'Vida de la base: ' + str(juego.vida_base) + '/' + str(juego.vida_maxima), x, 60)
     texto(pantalla, fuente, 'Dinero: ' + str(juego.presupuesto_jugador), x, 84)
     
     if ver_ia:
@@ -204,14 +219,12 @@ def dibujar_panel(pantalla, juego, fuente, fuente_peq, seleccionada, velocidad, 
     texto(pantalla, fuente_peq, 'Rango ' + str(s['rango']) + ' | Cooldown ' + str(s['cooldown']), x, y)
     texto(pantalla, fuente_peq, 'Rellena ' + str(s['rellenado']) + ' | Ve topos: ' +
           ('si' if s['uniq'] else 'no'), x, y + 18)
+    texto(pantalla, fuente_peq, 'Mejoras: $' + str(int(s['costo'] * MEJORA_COSTO[2])) + ' / $' +
+          str(int(s['costo'] * MEJORA_COSTO[3])), x, y + 36)
 
     y += 50
-    for linea in ['Clic izq: colocar torre', 'Clic der: quitar torre',
-<<<<<<< HEAD
+    for linea in ['Clic izq: colocar / mejorar', 'Clic der: quitar torre',
                   'F: niebla | TAB: panel IA', 'ESPACIO: boton principal', 'ESC: menu']:
-=======
-                  'F: ver lo que sabe la IA', 'ESPACIO: boton principal', 'ESC: menu']:
->>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
         texto(pantalla, fuente_peq, linea, x, y, (170, 170, 180))
         y += 18
 
@@ -224,15 +237,42 @@ def dibujar_panel(pantalla, juego, fuente, fuente_peq, seleccionada, velocidad, 
         texto(pantalla, fuente_peq, 'Celdas nuevas (IA): ' + str(st['celdas_nuevas']), x, y + 36)
 
 
-def dibujar_menu(pantalla, fuente, fuente_grande):
+def dibujar_menu(pantalla, fuente, fuente_grande, hay_partida=False):
     pantalla.fill(COLOR_PANEL)
     titulo = fuente_grande.render('Conejos Guardianes', True, COLOR_TEXTO)
-    pantalla.blit(titulo, (ANCHO // 2 - titulo.get_width() // 2, 160))
-    rects = rects_menu()
-    for clave, etiqueta in (('jugar', 'Jugar'), ('salir', 'Salir')):
-        pygame.draw.rect(pantalla, COLOR_BOTON_SEL, rects[clave])
-        t = fuente.render(etiqueta, True, COLOR_TEXTO)
-        pantalla.blit(t, (rects[clave].centerx - t.get_width() // 2, rects[clave].y + 14))
+    pantalla.blit(titulo, (ANCHO // 2 - titulo.get_width() // 2, 140))
+    etiquetas = {'continuar': 'Continuar', 'jugar': 'Nueva partida' if hay_partida else 'Jugar',
+                 'salir': 'Salir'}
+    for clave, rect in rects_menu(hay_partida).items():
+        pygame.draw.rect(pantalla, COLOR_BOTON_SEL, rect)
+        t = fuente.render(etiquetas[clave], True, COLOR_TEXTO)
+        pantalla.blit(t, (rect.centerx - t.get_width() // 2, rect.y + 14))
+
+
+def dibujar_dificultad(pantalla, fuente, fuente_peq, fuente_grande, pos_mouse):
+    pantalla.fill(COLOR_PANEL)
+    titulo = fuente_grande.render('Dificultad', True, COLOR_TEXTO)
+    pantalla.blit(titulo, (ANCHO // 2 - titulo.get_width() // 2, 70))
+    rects = rects_dificultad()
+    for clave, aj in DIFICULTADES.items():
+        r = rects[clave]
+        pygame.draw.rect(pantalla, COLOR_BOTON_SEL if r.collidepoint(pos_mouse) else COLOR_BOTON, r)
+        pygame.draw.rect(pantalla, COLOR_TEXTO, r, 2)
+        nombre = fuente_grande.render(aj['nombre'], True, COLOR_TEXTO)
+        pantalla.blit(nombre, (r.centerx - nombre.get_width() // 2, r.y + 14))
+        texto(pantalla, fuente_peq, aj['descripcion'], r.x + 18, r.y + 82, (190, 190, 200))
+        lineas = ['Vida de la base: ' + str(aj['vida_base']),
+                  'Dinero de la IA: ' + str(int(aj['dinero_ia'] * 100)) + '%',
+                  'Panza: +' + str(int(round(aj['escala_panza'] * 100))) + '% por ronda',
+                  'IA: ' + aj['ia']]
+        y = r.y + 118
+        for linea in lineas:
+            texto(pantalla, fuente, linea, r.x + 18, y)
+            y += 30
+    v = rects['volver']
+    pygame.draw.rect(pantalla, COLOR_BOTON_SEL if v.collidepoint(pos_mouse) else COLOR_BOTON, v)
+    t = fuente.render('Volver', True, COLOR_TEXTO)
+    pantalla.blit(t, (v.centerx - t.get_width() // 2, v.y + 11))
 
 
 # Bucle principal
@@ -244,7 +284,7 @@ def accion_principal(juego, velocidad):
     elif juego.fase == 'resumen':
         juego.siguiente_ronda()
     elif juego.fase in ('derrota', 'victoria'):
-        juego = Juego()
+        juego = Juego(juego.dificultad)       # reinicia con la misma dificultad
     return juego, velocidad
 
 
@@ -257,14 +297,12 @@ def ejecutar():
     fuente_peq = pygame.font.SysFont(None, 21)
     fuente_grande = pygame.font.SysFont(None, 64)
     sprites = cargar_sprites()
-<<<<<<< HEAD
     fuentes_ia = panel_ia.crear_fuentes()
     estado_ia = panel_ia.estado_inicial()
     ver_panel = False
-=======
->>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
 
     juego = Juego()
+    hay_partida = False       # True cuando ya se eligio dificultad (activa 'Continuar')
     estado = 'menu'           
     seleccionada = 'basica'
     ver_ia = False
@@ -281,15 +319,33 @@ def ejecutar():
 
             elif estado == 'menu':
                 if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
-                    rects = rects_menu()
-                    if rects['jugar'].collidepoint(ev.pos):
+                    rects = rects_menu(hay_partida)
+                    if 'continuar' in rects and rects['continuar'].collidepoint(ev.pos):
                         estado = 'juego'
+                    elif rects['jugar'].collidepoint(ev.pos):
+                        estado = 'dificultad'
                     elif rects['salir'].collidepoint(ev.pos):
                         corriendo = False
 
+            elif estado == 'dificultad':
+                if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
+                    estado = 'menu'
+                elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                    rects = rects_dificultad()
+                    if rects['volver'].collidepoint(ev.pos):
+                        estado = 'menu'
+                    for clave in DIFICULTADES:
+                        if rects[clave].collidepoint(ev.pos):
+                            juego = Juego(clave)
+                            hay_partida = True
+                            seleccionada = 'basica'
+                            velocidad = 1
+                            acumulado = 0
+                            ver_panel = False
+                            estado = 'juego'
+
             elif estado == 'juego':
                 if ev.type == pygame.KEYDOWN:
-<<<<<<< HEAD
                     if ev.key == pygame.K_TAB:
                         ver_panel = not ver_panel
                     elif ev.key == pygame.K_ESCAPE:
@@ -309,21 +365,16 @@ def ejecutar():
                         i = panel_ia.pestana_en(ev.pos)
                         if i is not None:
                             estado_ia['pestana'] = i
-=======
-                    if ev.key == pygame.K_ESCAPE:
-                        estado = 'menu'
-                    elif ev.key == pygame.K_f:
-                        ver_ia = not ver_ia
-                    elif ev.key == pygame.K_SPACE:
-                        juego, velocidad = accion_principal(juego, velocidad)
->>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
 
                 elif ev.type == pygame.MOUSEBUTTONDOWN:
                     x, y = ev.pos
                     if x < COLS * CELDA:                      # clic sobre el tablero
                         fila, col = y // CELDA, x // CELDA
                         if ev.button == 1:
-                            juego.colocar_torre(seleccionada, fila, col)
+                            if juego.torre_en(fila, col):
+                                juego.mejorar_torre(fila, col)       # clic sobre una torre = mejorarla
+                            else:
+                                juego.colocar_torre(seleccionada, fila, col)
                         elif ev.button == 3:
                             juego.quitar_torre(fila, col)
                     elif ev.button == 1:                      # clic sobre el panel
@@ -343,12 +394,11 @@ def ejecutar():
 
         # dibujo
         if estado == 'menu':
-            dibujar_menu(pantalla, fuente, fuente_grande)
-<<<<<<< HEAD
+            dibujar_menu(pantalla, fuente, fuente_grande, hay_partida)
+        elif estado == 'dificultad':
+            dibujar_dificultad(pantalla, fuente, fuente_peq, fuente_grande, pygame.mouse.get_pos())
         elif ver_panel:
             panel_ia.dibujar_panel_ia(pantalla, juego, estado_ia, fuentes_ia)
-=======
->>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
         else:
             pantalla.fill(COLOR_PANEL)
             dibujar_mapa(pantalla, juego, sprites)
@@ -362,8 +412,4 @@ def ejecutar():
 
         pygame.display.flip()
 
-<<<<<<< HEAD
     pygame.quit()
-=======
-    pygame.quit()
->>>>>>> 5ff211f74b08821e74b5ff072bc1db55ade26f7f
